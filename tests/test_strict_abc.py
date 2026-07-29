@@ -1008,3 +1008,85 @@ def test_postponed_annotations_invalid_return_raises() -> None:
 
     with pytest.raises(TypeError, match="return type not covariant"):
         exec(compile(code, "<string>", "exec"), {})
+        
+def test_invalid_strict_options_are_ignored() -> None:
+    class Base(StrictABC):
+        __strict_options__ = ["not-a-dict"]  # type: ignore[assignment]
+
+        @abstractmethod
+        def m(self, a: int = 1) -> int:
+            ...
+
+    with pytest.raises(TypeError, match="removing default value"):
+        class _Impl(Base):
+            def m(self, a: int) -> int:
+                return a
+
+
+def test_return_type_generic_exact_allowed() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_return_type": True}
+
+        @abstractmethod
+        def m(self) -> list[int]:
+            ...
+
+    class Impl(Base):
+        def m(self) -> list[int]:
+            return [1]
+
+    assert Impl().m() == [1]
+
+
+def test_return_type_generic_args_mismatch_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_return_type": True}
+
+        @abstractmethod
+        def m(self) -> list[object]:
+            ...
+
+    with pytest.raises(TypeError, match="return type not covariant"):
+        class _Impl(Base):
+            def m(self) -> list[str]:
+                return ["x"]
+
+
+def test_check_types_keyword_only_mismatch_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types": True}
+
+        @abstractmethod
+        def m(self, *, a: int) -> int:
+            ...
+
+    with pytest.raises(TypeError, match="type annotation mismatch"):
+        class _Impl(Base):
+            def m(self, *, a: str) -> int:
+                return "x"
+
+
+def test_check_types_keyword_only_missing_annotation_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types": True}
+
+        @abstractmethod
+        def m(self, *, a: int) -> int:
+            ...
+
+    with pytest.raises(TypeError, match="missing type annotation"):
+        class _Impl(Base):
+            def m(self, *, a):
+                return a
+
+
+def test_keyword_only_default_removal_by_name_raises() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, *, a: int = 1) -> int:
+            ...
+
+    with pytest.raises(TypeError, match="removing default value"):
+        class _Impl(Base):
+            def m(self, *, a: int) -> int:
+                return a
