@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/Mkrie/strict-abc/actions/workflows/ci.yml/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
-[![Python versions](https://img.shields.io/pypi/pyversions/strict-abc.svg)](https://pypi.org/project/strict-abc-lsp/)
+[![Python versions](https://img.shields.io/pypi/pyversions/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![mypy](https://img.shields.io/badge/mypy-checked-2A6DB2.svg)](http://mypy-lang.org/)
@@ -103,24 +103,3 @@ Run tests with coverage:
 ```bash
 make cov
 ```
-
-## Publishing
-
-For TestPyPI:
-
-```bash
-poetry config repositories.testpypi https://test.pypi.org/legacy/
-poetry config pypi-token.testpypi <YOUR_TESTPYPI_TOKEN>
-make publish-test
-```
-
-For PyPI:
-
-```bash
-poetry config pypi-token.pypi <YOUR_PYPI_TOKEN>
-make publish
-```
-
-## License
-
-MIT
