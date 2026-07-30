@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "strict-abc-lsp"
-version = "0.2.0"
+version = "0.2.1"
 description = "ABCMeta that enforces LSP-friendly signatures for abstract methods."
 authors = ["Danil Shamsutdinov <a.danil.dark@gmail.com>"]
 license = "MIT"
