@@ -4,7 +4,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
 [![Python versions](https://img.shields.io/pypi/pyversions/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
 [![PyPI - Types](https://img.shields.io/pypi/types/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
-[![Downloads](https://img.shields.io/pypi/dm/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/strict-abc-lsp?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/strict-abc-lsp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![mypy](https://img.shields.io/badge/mypy-checked-2A6DB2.svg)](http://mypy-lang.org/)
@@ -30,8 +30,7 @@ from abc import ABC, abstractmethod
 
 class Base(ABC):
     @abstractmethod
-    def process(self, data: dict, cache: bool = True) -> str:
-        ...
+    def process(self, data: dict, cache: bool = True) -> str: ...
 
 
 class Impl(Base):
@@ -79,8 +78,7 @@ from strict_abc import StrictABC
 
 class BaseService(StrictABC):
     @abstractmethod
-    def process(self, data: dict, cache: bool = True) -> str:
-        ...
+    def process(self, data: dict, cache: bool = True) -> str: ...
 
 
 class ValidService(BaseService):
@@ -118,13 +116,11 @@ Not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, a: int = 1) -> None:
-        ...
+    def m(self, a: int = 1) -> None: ...
 
 
 class Impl(Base):
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 ```
 
 Allowed:
@@ -132,13 +128,11 @@ Allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 
 
 class Impl(Base):
-    def m(self, a: int = 1) -> None:
-        ...
+    def m(self, a: int = 1) -> None: ...
 ```
 
 Adding defaults weakens the precondition and is safe.
@@ -152,21 +146,18 @@ Not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 
 
 class Impl(Base):
-    def m(self, a: int, b: int) -> None:
-        ...
+    def m(self, a: int, b: int) -> None: ...
 ```
 
 Allowed if the new parameter is optional:
 
 ```python
 class Impl(Base):
-    def m(self, a: int, b: int = 0) -> None:
-        ...
+    def m(self, a: int, b: int = 0) -> None: ...
 ```
 
 ---
@@ -178,13 +169,11 @@ Not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, *args: int) -> None:
-        ...
+    def m(self, *args: int) -> None: ...
 
 
 class Impl(Base):
-    def m(self) -> None:
-        ...
+    def m(self) -> None: ...
 ```
 
 Also not allowed:
@@ -192,13 +181,11 @@ Also not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, **kwargs: int) -> None:
-        ...
+    def m(self, **kwargs: int) -> None: ...
 
 
 class Impl(Base):
-    def m(self) -> None:
-        ...
+    def m(self) -> None: ...
 ```
 
 Adding `*args` or `**kwargs` is allowed because it expands the accepted call surface.
@@ -214,13 +201,11 @@ Not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def connect(self, *, host: str) -> None:
-        ...
+    def connect(self, *, host: str) -> None: ...
 
 
 class Impl(Base):
-    def connect(self, *, address: str) -> None:
-        ...
+    def connect(self, *, address: str) -> None: ...
 ```
 
 Parent callers may use:
@@ -243,8 +228,7 @@ For example, a static method must remain a static method:
 class Base(StrictABC):
     @staticmethod
     @abstractmethod
-    def parse(raw: str) -> dict:
-        ...
+    def parse(raw: str) -> dict: ...
 
 
 class ValidImpl(Base):
@@ -281,8 +265,7 @@ class Base(StrictABC):
     __strict_options__ = {"check_return_type": True}
 
     @abstractmethod
-    def get(self) -> object:
-        ...
+    def get(self) -> object: ...
 
 
 class Impl(Base):
@@ -297,8 +280,7 @@ class Base(StrictABC):
     __strict_options__ = {"check_return_type": True}
 
     @abstractmethod
-    def get(self) -> str:
-        ...
+    def get(self) -> str: ...
 
 
 class Impl(Base):
@@ -322,8 +304,7 @@ class Base(StrictABC):
     }
 
     @abstractmethod
-    def fetch(self, url: str) -> bytes:
-        ...
+    def fetch(self, url: str) -> bytes: ...
 ```
 
 ### Available options
@@ -359,15 +340,13 @@ class Base(StrictABC):
     __strict_options__ = {"check_types": True}
 
     @abstractmethod
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 
 
 class Child(Base):
     __strict_options__ = {"check_names": True}
 
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 ```
 
 In this case, both options are active:
@@ -393,13 +372,11 @@ from strict_abc import StrictABCMeta
 
 class Base(metaclass=StrictABCMeta):
     @abstractmethod
-    def run(self, timeout: int = 30) -> None:
-        ...
+    def run(self, timeout: int = 30) -> None: ...
 
 
 class Impl(Base):
-    def run(self, timeout: int = 30) -> None:
-        ...
+    def run(self, timeout: int = 30) -> None: ...
 ```
 
 ---
