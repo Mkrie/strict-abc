@@ -282,29 +282,19 @@ class StrictABCMeta(ABCMeta):
         if child_descriptor != "staticmethod" and c_params:
             c_params = c_params[1:]
 
-        p_has_var_pos: bool = any(
-            p.kind == inspect.Parameter.VAR_POSITIONAL for p in p_params
-        )
-        p_has_var_kw: bool = any(
-            p.kind == inspect.Parameter.VAR_KEYWORD for p in p_params
-        )
-        c_has_var_pos: bool = any(
-            c.kind == inspect.Parameter.VAR_POSITIONAL for c in c_params
-        )
-        c_has_var_kw: bool = any(
-            c.kind == inspect.Parameter.VAR_KEYWORD for c in c_params
-        )
+        p_has_var_pos: bool = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in p_params)
+        p_has_var_kw: bool = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in p_params)
+        c_has_var_pos: bool = any(c.kind == inspect.Parameter.VAR_POSITIONAL for c in c_params)
+        c_has_var_kw: bool = any(c.kind == inspect.Parameter.VAR_KEYWORD for c in c_params)
 
         if p_has_var_pos and not c_has_var_pos:
             raise TypeError(
-                f"{class_name}.{meth_name}: removed *args from parent signature "
-                f"(violates LSP)"
+                f"{class_name}.{meth_name}: removed *args from parent signature (violates LSP)"
             )
 
         if p_has_var_kw and not c_has_var_kw:
             raise TypeError(
-                f"{class_name}.{meth_name}: removed **kwargs from parent signature "
-                f"(violates LSP)"
+                f"{class_name}.{meth_name}: removed **kwargs from parent signature (violates LSP)"
             )
 
         positional_kinds = (
@@ -316,28 +306,18 @@ class StrictABCMeta(ABCMeta):
             inspect.Parameter.KEYWORD_ONLY,
         )
 
-        p_pos: list[inspect.Parameter] = [
-            p for p in p_params if p.kind in positional_kinds
-        ]
-        c_pos: list[inspect.Parameter] = [
-            c for c in c_params if c.kind in positional_kinds
-        ]
+        p_pos: list[inspect.Parameter] = [p for p in p_params if p.kind in positional_kinds]
+        c_pos: list[inspect.Parameter] = [c for c in c_params if c.kind in positional_kinds]
 
         p_kw: dict[str, inspect.Parameter] = {
-            p.name: p
-            for p in p_params
-            if p.kind == inspect.Parameter.KEYWORD_ONLY
+            p.name: p for p in p_params if p.kind == inspect.Parameter.KEYWORD_ONLY
         }
         c_kw: dict[str, inspect.Parameter] = {
-            c.name: c
-            for c in c_params
-            if c.kind == inspect.Parameter.KEYWORD_ONLY
+            c.name: c for c in c_params if c.kind == inspect.Parameter.KEYWORD_ONLY
         }
 
         c_by_name_keyword: dict[str, inspect.Parameter] = {
-            c.name: c
-            for c in c_params
-            if c.kind in keyword_accessible_kinds
+            c.name: c for c in c_params if c.kind in keyword_accessible_kinds
         }
 
         # ------------------------------------------------------------------
@@ -402,8 +382,7 @@ class StrictABCMeta(ABCMeta):
 
                 if p_has_annotation and not c_has_annotation:
                     raise TypeError(
-                        f"{class_name}.{meth_name}: missing type annotation for "
-                        f"'{p.name}'"
+                        f"{class_name}.{meth_name}: missing type annotation for '{p.name}'"
                     )
 
                 if p_has_annotation and c_has_annotation:
@@ -480,8 +459,7 @@ class StrictABCMeta(ABCMeta):
 
                     if p_has_annotation and not c_has_annotation:
                         raise TypeError(
-                            f"{class_name}.{meth_name}: missing type annotation for "
-                            f"'{p.name}'"
+                            f"{class_name}.{meth_name}: missing type annotation for '{p.name}'"
                         )
 
                     if p_has_annotation and c_has_annotation:
@@ -518,9 +496,7 @@ class StrictABCMeta(ABCMeta):
             c_ret: object = sig_child.return_annotation
 
             if p_ret is not inspect.Signature.empty and c_ret is inspect.Signature.empty:
-                raise TypeError(
-                    f"{class_name}.{meth_name}: missing return type annotation"
-                )
+                raise TypeError(f"{class_name}.{meth_name}: missing return type annotation")
 
             if not StrictABCMeta._is_return_compatible(p_ret, c_ret):
                 raise TypeError(
