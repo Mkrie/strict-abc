@@ -158,7 +158,7 @@ def strict(**opts: Any) -> Callable[[type[Any]], type[Any]]:
     """
 
     def decorator(cls: type[Any]) -> type[Any]:
-        cls.__strict_options__ = opts  # type: ignore[attr-defined]
+        cls.__strict_options__ = opts
         return cls
 
     return decorator
@@ -213,7 +213,7 @@ class StrictABCMeta(ABCMeta):
         cls: type[Any] = super().__new__(mcls, name, bases, namespace, **kwargs)
 
         options: StrictOptions = mcls._get_options(cls)
-        mode: str = options.get("mode", "error")  # type: ignore[assignment]
+        mode: str = options.get("mode", "error")
 
         check_names: bool = bool(options.get("check_names", False))
         check_defaults: bool = bool(options.get("check_defaults", True))
@@ -227,7 +227,7 @@ class StrictABCMeta(ABCMeta):
         for base in bases:
             abstract_methods: object = getattr(base, "__abstractmethods__", frozenset())
             if isinstance(abstract_methods, (frozenset, set)):
-                parent_abstracts.update(abstract_methods)  # type: ignore[arg-type]
+                parent_abstracts.update(abstract_methods)
 
         cls_abstracts_obj: object = getattr(cls, "__abstractmethods__", frozenset())
         cls_abstracts: frozenset[str] = (
@@ -457,7 +457,7 @@ class StrictABCMeta(ABCMeta):
             return attr.__func__, kind
 
         if callable(attr):
-            return attr, kind  # type: ignore[return-value]
+            return attr, kind
 
         raise TypeError(f"Unsupported descriptor type: {type(attr)!r}")
 
@@ -667,7 +667,7 @@ class StrictABCMeta(ABCMeta):
         import types
 
         if isinstance(c, types.UnionType):
-            c_args: tuple[Any, ...] = c.__args__  # type: ignore[attr-defined]
+            c_args: tuple[Any, ...] = c.__args__
             return any(
                 StrictABCMeta._is_param_compatible_contravariant(p, arg)
                 for arg in c_args
