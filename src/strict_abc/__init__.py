@@ -1,16 +1,30 @@
-from importlib.metadata import PackageNotFoundError, version
+"""strict-abc-lsp: runtime LSP signature validation for abstract base classes.
 
-from ._meta import DescriptorKind, StrictABC, StrictABCMeta, StrictOptions
+Distribution name:
+    ``strict-abc-lsp``
+
+Import name:
+    ``strict_abc``
+"""
+
+from strict_abc._meta import (
+    DescriptorKind,
+    LSPViolation,
+    StrictABC,
+    StrictABCMeta,
+    StrictOptions,
+    __version__,
+    lsp_exempt,
+    strict,
+)
 
 __all__ = [
     "DescriptorKind",
+    "LSPViolation",
     "StrictABC",
     "StrictABCMeta",
     "StrictOptions",
     "__version__",
+    "lsp_exempt",
+    "strict",
 ]
-
-try:
-    __version__ = version("strict-abc-lsp")
-except PackageNotFoundError:
-    __version__ = "0.0.0"
