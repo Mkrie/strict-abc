@@ -1,10 +1,11 @@
 # strict-abc-lsp
 
 ![CI](https://github.com/Mkrie/strict-abc/actions/workflows/ci.yml/badge.svg)
+[![codecov](https://img.shields.io/codecov/c/github/Mkrie/strict-abc?logo=codecov)](https://codecov.io/gh/Mkrie/strict-abc)
 [![PyPI version](https://img.shields.io/pypi/v/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
 [![Python versions](https://img.shields.io/pypi/pyversions/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
 [![PyPI - Types](https://img.shields.io/pypi/types/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
-[![Downloads](https://img.shields.io/pypi/dm/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/strict-abc-lsp?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/strict-abc-lsp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![mypy](https://img.shields.io/badge/mypy-checked-2A6DB2.svg)](http://mypy-lang.org/)
@@ -30,8 +31,7 @@ from abc import ABC, abstractmethod
 
 class Base(ABC):
     @abstractmethod
-    def process(self, data: dict, cache: bool = True) -> str:
-        ...
+    def process(self, data: dict, cache: bool = True) -> str: ...
 
 
 class Impl(Base):
@@ -79,8 +79,7 @@ from strict_abc import StrictABC
 
 class BaseService(StrictABC):
     @abstractmethod
-    def process(self, data: dict, cache: bool = True) -> str:
-        ...
+    def process(self, data: dict, cache: bool = True) -> str: ...
 
 
 class ValidService(BaseService):
@@ -90,7 +89,7 @@ class ValidService(BaseService):
 
 This works.
 
-But this raises `TypeError` at class definition time:
+But this raises `TypeError` (specifically `LSPViolation`) at class definition time:
 
 ```python
 class InvalidService(BaseService):
@@ -118,13 +117,11 @@ Not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, a: int = 1) -> None:
-        ...
+    def m(self, a: int = 1) -> None: ...
 
 
 class Impl(Base):
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 ```
 
 Allowed:
@@ -132,13 +129,11 @@ Allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 
 
 class Impl(Base):
-    def m(self, a: int = 1) -> None:
-        ...
+    def m(self, a: int = 1) -> None: ...
 ```
 
 Adding defaults weakens the precondition and is safe.
@@ -152,21 +147,18 @@ Not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 
 
 class Impl(Base):
-    def m(self, a: int, b: int) -> None:
-        ...
+    def m(self, a: int, b: int) -> None: ...
 ```
 
 Allowed if the new parameter is optional:
 
 ```python
 class Impl(Base):
-    def m(self, a: int, b: int = 0) -> None:
-        ...
+    def m(self, a: int, b: int = 0) -> None: ...
 ```
 
 ---
@@ -178,13 +170,11 @@ Not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, *args: int) -> None:
-        ...
+    def m(self, *args: int) -> None: ...
 
 
 class Impl(Base):
-    def m(self) -> None:
-        ...
+    def m(self) -> None: ...
 ```
 
 Also not allowed:
@@ -192,13 +182,11 @@ Also not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def m(self, **kwargs: int) -> None:
-        ...
+    def m(self, **kwargs: int) -> None: ...
 
 
 class Impl(Base):
-    def m(self) -> None:
-        ...
+    def m(self) -> None: ...
 ```
 
 Adding `*args` or `**kwargs` is allowed because it expands the accepted call surface.
@@ -214,13 +202,11 @@ Not allowed:
 ```python
 class Base(StrictABC):
     @abstractmethod
-    def connect(self, *, host: str) -> None:
-        ...
+    def connect(self, *, host: str) -> None: ...
 
 
 class Impl(Base):
-    def connect(self, *, address: str) -> None:
-        ...
+    def connect(self, *, address: str) -> None: ...
 ```
 
 Parent callers may use:
@@ -243,8 +229,7 @@ For example, a static method must remain a static method:
 class Base(StrictABC):
     @staticmethod
     @abstractmethod
-    def parse(raw: str) -> dict:
-        ...
+    def parse(raw: str) -> dict: ...
 
 
 class ValidImpl(Base):
@@ -281,8 +266,7 @@ class Base(StrictABC):
     __strict_options__ = {"check_return_type": True}
 
     @abstractmethod
-    def get(self) -> object:
-        ...
+    def get(self) -> object: ...
 
 
 class Impl(Base):
@@ -297,14 +281,19 @@ class Base(StrictABC):
     __strict_options__ = {"check_return_type": True}
 
     @abstractmethod
-    def get(self) -> str:
-        ...
+    def get(self) -> str: ...
 
 
 class Impl(Base):
     def get(self) -> object:
         return object()
 ```
+
+---
+
+### 7. Async/sync compatibility
+
+An abstract `async def` method must be implemented as an `async def` method, and a regular `def` must remain synchronous. Mixing them raises an error.
 
 ---
 
@@ -318,12 +307,13 @@ class Base(StrictABC):
         "check_names": True,
         "check_defaults": True,
         "check_types": True,
+        "check_types_contravariant": True,
         "check_return_type": True,
+        "mode": "error",
     }
 
     @abstractmethod
-    def fetch(self, url: str) -> bytes:
-        ...
+    def fetch(self, url: str) -> bytes: ...
 ```
 
 ### Available options
@@ -333,7 +323,9 @@ class Base(StrictABC):
 | `check_names` | `False` | Require exact parameter name matching. |
 | `check_defaults` | `True` | Forbid removing default values. |
 | `check_types` | `False` | Require exact parameter type annotation matching. |
+| `check_types_contravariant` | `False` | Require contravariant parameter types (child may widen the accepted type). Takes precedence over `check_types`. |
 | `check_return_type` | `False` | Require covariant return type annotations. |
+| `mode` | `"error"` | `"error"` raises `LSPViolation` (a `TypeError`), `"warn"` emits a `UserWarning`. |
 
 Default configuration:
 
@@ -342,7 +334,9 @@ Default configuration:
     "check_names": False,
     "check_defaults": True,
     "check_types": False,
+    "check_types_contravariant": False,
     "check_return_type": False,
+    "mode": "error",
 }
 ```
 
@@ -359,15 +353,13 @@ class Base(StrictABC):
     __strict_options__ = {"check_types": True}
 
     @abstractmethod
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 
 
 class Child(Base):
     __strict_options__ = {"check_names": True}
 
-    def m(self, a: int) -> None:
-        ...
+    def m(self, a: int) -> None: ...
 ```
 
 In this case, both options are active:
@@ -393,13 +385,47 @@ from strict_abc import StrictABCMeta
 
 class Base(metaclass=StrictABCMeta):
     @abstractmethod
-    def run(self, timeout: int = 30) -> None:
-        ...
+    def run(self, timeout: int = 30) -> None: ...
 
 
 class Impl(Base):
-    def run(self, timeout: int = 30) -> None:
-        ...
+    def run(self, timeout: int = 30) -> None: ...
+```
+
+---
+
+## Using the `@strict` decorator
+
+If you already have a base class or metaclass hierarchy and cannot inherit from `StrictABC`, you can use the `@strict` class decorator to inject options:
+
+```python
+from abc import ABC, abstractmethod
+from strict_abc import StrictABCMeta, strict
+
+@strict(check_types=True, check_return_type=True)
+class Base(ABC, metaclass=StrictABCMeta):
+    @abstractmethod
+    def run(self) -> None: ...
+```
+
+---
+
+## Exempting methods
+
+If you intentionally want to narrow the calling contract and acknowledge the LSP violation, you can mark a method with `@lsp_exempt`:
+
+```python
+from strict_abc import StrictABC, lsp_exempt
+from abc import abstractmethod
+
+class Base(StrictABC):
+    @abstractmethod
+    def process(self, data: dict, cache: bool = True) -> str: ...
+
+class Impl(Base):
+    @lsp_exempt
+    def process(self, data: dict) -> str:
+        return "ok"
 ```
 
 ---
@@ -416,7 +442,8 @@ The Liskov Substitution Principle says that objects of a subtype should be usabl
 - implementations must not remove accepted calling forms;
 - implementations must not remove variadic parameters declared by the parent;
 - implementations should preserve keyword-call compatibility;
-- return types should remain covariant when checking is enabled.
+- return types should remain covariant when checking is enabled;
+- parameter types may widen (contravariance) when checking is enabled.
 
 However, this library does **not** verify full behavioral substitution.
 
@@ -493,7 +520,7 @@ This library is especially useful for:
 
 Current limitations include:
 
-- parameter type checking is exact, not fully contravariant;
+- parameter type contravariance is handled conservatively (e.g., basic subclasses and unions are supported, but complex generic aliases may not be fully resolved);
 - generic return type covariance is handled conservatively;
 - overloaded functions are not fully analyzed;
 - custom descriptors may not be fully supported;
@@ -606,3 +633,4 @@ MAJOR.MINOR.PATCH
 ## License
 
 MIT
+```
