@@ -568,6 +568,42 @@ class StrictABCMeta(ABCMeta):
                 # If parsing or evaluation fails, return the original string
                 return annotation
         return annotation
+    
+    @staticmethod
+    def _get_origin(annotation: object) -> object | None:
+        """Return the annotation origin, if present.
+
+        Uses :func:`typing.get_origin` first and falls back to the
+        ``__origin__`` attribute for non-standard generic objects.
+
+        Args:
+            annotation: Type annotation to inspect.
+
+        Returns:
+            The annotation origin or ``None`` if absent.
+        """
+        origin = typing.get_origin(annotation)
+        if origin is not None:
+            return cast("object", origin)
+        return cast("object | None", getattr(annotation, "__origin__", None))
+
+    @staticmethod
+    def _get_args(annotation: object) -> object:
+        """Return generic annotation arguments.
+
+        Uses :func:`typing.get_args` first and falls back to the
+        ``__args__`` attribute for non-standard generic objects.
+
+        Args:
+            annotation: Type annotation to inspect.
+
+        Returns:
+            Generic arguments, or an empty tuple if absent.
+        """
+        args = typing.get_args(annotation)
+        if args:
+            return cast("object", args)
+        return cast("object", getattr(annotation, "__args__", ()))
 
     # ------------------------------------------------------------------
     # Type compatibility
@@ -586,6 +622,7 @@ class StrictABCMeta(ABCMeta):
         """
         if parent_ret is inspect.Signature.empty:
             return True
+
         if child_ret is inspect.Signature.empty:
             return False
 
@@ -594,34 +631,48 @@ class StrictABCMeta(ABCMeta):
 
         if p is Any or c is Any:
             return True
+
         if p == c:
             return True
+
         if p is object:
             return True
+
+        p_origin = StrictABCMeta._get_origin(p)
+        c_origin = StrictABCMeta._get_origin(c)
+
+        # Generic aliases must be compared through origin/args before the
+        # plain issubclass() branch. On Python 3.10 parameterized generics
+        # may enter the isinstance(..., type) path, but issubclass() on them
+        # is not a reliable LSP check.
+        if p_origin is not None and c_origin is not None:
+            if p == c:
+                return True
+
+            p_args = StrictABCMeta._get_args(p)
+            c_args = StrictABCMeta._get_args(c)
+
+            if p_origin == c_origin:
+                return p_args == c_args
+
+            if isinstance(p_origin, type) and isinstance(c_origin, type):
+                try:
+                    if issubclass(c_origin, p_origin):
+                        return p_args == c_args
+                except TypeError:
+                    return False
+
+            return False
+
+        # If only one side is a parameterized generic, be conservative.
+        if p_origin is not None or c_origin is not None:
+            return False
 
         if isinstance(p, type) and isinstance(c, type):
             try:
                 return issubclass(c, p)
             except TypeError:
                 return False
-
-        # Conservative handling of generic aliases (e.g. list[int]).
-        p_origin = getattr(p, "__origin__", None)
-        c_origin = getattr(c, "__origin__", None)
-
-        if p_origin is not None and c_origin is not None:
-            if p == c:
-                return True
-            if isinstance(p_origin, type) and isinstance(c_origin, type):
-                try:
-                    if issubclass(c_origin, p_origin):
-                        p_args = getattr(p, "__args__", None)
-                        c_args = getattr(c, "__args__", None)
-                        # Generic types in Python (like list, dict) are invariant.
-                        # Their arguments must match exactly to satisfy LSP.
-                        return p_args == c_args
-                except TypeError:
-                    return False
 
         return False
 
