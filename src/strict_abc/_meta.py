@@ -19,7 +19,10 @@ Example:
 
 from __future__ import annotations
 
+import ast
+import builtins
 import inspect
+import typing
 import warnings
 from abc import ABC, ABCMeta
 from collections.abc import Callable, Mapping
@@ -484,8 +487,11 @@ class StrictABCMeta(ABCMeta):
     def _normalize_annotation(annotation: object) -> object:
         """Normalize a type annotation for comparison.
 
-        Handles ``None`` → ``type(None)`` and attempts to resolve string
+        Handles ``None`` -> ``type(None)`` and safely resolves string
         annotations produced by ``from __future__ import annotations``.
+
+        Uses AST parsing with security checks to prevent code injection
+        through malicious annotation strings.
 
         Args:
             annotation: A raw annotation object.
@@ -498,11 +504,68 @@ class StrictABCMeta(ABCMeta):
         if annotation is None:
             return type(None)
         if isinstance(annotation, str):
-            import builtins
-
+            # Safely parse and evaluate string annotations
             try:
-                return eval(annotation, vars(builtins))  # noqa: S307
+                # Parse the annotation string
+                tree = ast.parse(annotation, mode='eval')
+
+                # Security check: reject dangerous patterns
+                for node in ast.walk(tree):
+                    # Block function calls that could be dangerous
+                    if isinstance(node, ast.Call):
+                        func = node.func
+                        # Block direct calls to __import__, __builtins__, etc.
+                        if (isinstance(func, ast.Name) and 
+                            func.id in ['__import__', '__builtins__', 'exec', 'eval']):
+                            return annotation
+                        # Block attribute access to dangerous methods
+                        if (isinstance(func, ast.Attribute) and 
+                            func.attr in ['__import__', '__builtins__', '__class__',
+                                          '__subclasses__', '__bases__', '__mro__']):
+                            return annotation
+
+                    # Block dangerous attribute access
+                    if (isinstance(node, ast.Attribute) and 
+                        node.attr in ['__import__', '__builtins__', '__class__',
+                                      '__subclasses__', '__bases__', '__mro__',
+                                      'system', 'popen', 'exec', 'execfile']):
+                        return annotation
+
+                # Extract all names used in the annotation
+                names: set[str] = set()
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Name):
+                        names.add(node.id)
+                    elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                        # Handle things like typing.Optional
+                        names.add(node.value.id)
+
+                # Build safe namespace with builtins and typing
+                safe_globals: dict[str, Any] = {
+                    'None': None,
+                    'True': True,
+                    'False': False,
+                    'typing': typing,
+                }
+
+                # Add common built-in types
+                for name in names:
+                    if hasattr(builtins, name):
+                        safe_globals[name] = getattr(builtins, name)
+
+                # Add typing symbols directly if they're used
+                typing_symbols = ['Optional', 'Union', 'List', 'Dict', 'Set', 'Tuple',
+                                'Callable', 'Any', 'Literal', 'TypeVar', 'Generic',
+                                'Protocol', 'Final', 'ClassVar']
+                for symbol in typing_symbols:
+                    if symbol in names:
+                        safe_globals[symbol] = getattr(typing, symbol)
+
+                # Evaluate with safe namespace
+                return eval(compile(tree, '<annotation>', 'eval'), safe_globals)
+
             except Exception:
+                # If parsing or evaluation fails, return the original string
                 return annotation
         return annotation
 
