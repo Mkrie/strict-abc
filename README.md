@@ -1,6 +1,7 @@
 # strict-abc-lsp
 
 ![CI](https://github.com/Mkrie/strict-abc/actions/workflows/ci.yml/badge.svg)
+[![codecov](https://img.shields.io/codecov/c/github/Mkrie/strict-abc?logo=codecov)](https://codecov.io/gh/Mkrie/strict-abc)
 [![PyPI version](https://img.shields.io/pypi/v/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
 [![Python versions](https://img.shields.io/pypi/pyversions/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
 [![PyPI - Types](https://img.shields.io/pypi/types/strict-abc-lsp.svg)](https://pypi.org/project/strict-abc-lsp/)
@@ -88,7 +89,7 @@ class ValidService(BaseService):
 
 This works.
 
-But this raises `TypeError` at class definition time:
+But this raises `TypeError` (specifically `LSPViolation`) at class definition time:
 
 ```python
 class InvalidService(BaseService):
@@ -290,6 +291,12 @@ class Impl(Base):
 
 ---
 
+### 7. Async/sync compatibility
+
+An abstract `async def` method must be implemented as an `async def` method, and a regular `def` must remain synchronous. Mixing them raises an error.
+
+---
+
 ## Options
 
 Validation behavior can be configured using `__strict_options__`.
@@ -300,7 +307,9 @@ class Base(StrictABC):
         "check_names": True,
         "check_defaults": True,
         "check_types": True,
+        "check_types_contravariant": True,
         "check_return_type": True,
+        "mode": "error",
     }
 
     @abstractmethod
@@ -314,7 +323,9 @@ class Base(StrictABC):
 | `check_names` | `False` | Require exact parameter name matching. |
 | `check_defaults` | `True` | Forbid removing default values. |
 | `check_types` | `False` | Require exact parameter type annotation matching. |
+| `check_types_contravariant` | `False` | Require contravariant parameter types (child may widen the accepted type). Takes precedence over `check_types`. |
 | `check_return_type` | `False` | Require covariant return type annotations. |
+| `mode` | `"error"` | `"error"` raises `LSPViolation` (a `TypeError`), `"warn"` emits a `UserWarning`. |
 
 Default configuration:
 
@@ -323,7 +334,9 @@ Default configuration:
     "check_names": False,
     "check_defaults": True,
     "check_types": False,
+    "check_types_contravariant": False,
     "check_return_type": False,
+    "mode": "error",
 }
 ```
 
@@ -381,6 +394,42 @@ class Impl(Base):
 
 ---
 
+## Using the `@strict` decorator
+
+If you already have a base class or metaclass hierarchy and cannot inherit from `StrictABC`, you can use the `@strict` class decorator to inject options:
+
+```python
+from abc import ABC, abstractmethod
+from strict_abc import StrictABCMeta, strict
+
+@strict(check_types=True, check_return_type=True)
+class Base(ABC, metaclass=StrictABCMeta):
+    @abstractmethod
+    def run(self) -> None: ...
+```
+
+---
+
+## Exempting methods
+
+If you intentionally want to narrow the calling contract and acknowledge the LSP violation, you can mark a method with `@lsp_exempt`:
+
+```python
+from strict_abc import StrictABC, lsp_exempt
+from abc import abstractmethod
+
+class Base(StrictABC):
+    @abstractmethod
+    def process(self, data: dict, cache: bool = True) -> str: ...
+
+class Impl(Base):
+    @lsp_exempt
+    def process(self, data: dict) -> str:
+        return "ok"
+```
+
+---
+
 ## Relation to SOLID
 
 This library is primarily focused on the **Liskov Substitution Principle**.
@@ -393,7 +442,8 @@ The Liskov Substitution Principle says that objects of a subtype should be usabl
 - implementations must not remove accepted calling forms;
 - implementations must not remove variadic parameters declared by the parent;
 - implementations should preserve keyword-call compatibility;
-- return types should remain covariant when checking is enabled.
+- return types should remain covariant when checking is enabled;
+- parameter types may widen (contravariance) when checking is enabled.
 
 However, this library does **not** verify full behavioral substitution.
 
@@ -470,7 +520,7 @@ This library is especially useful for:
 
 Current limitations include:
 
-- parameter type checking is exact, not fully contravariant;
+- parameter type contravariance is handled conservatively (e.g., basic subclasses and unions are supported, but complex generic aliases may not be fully resolved);
 - generic return type covariance is handled conservatively;
 - overloaded functions are not fully analyzed;
 - custom descriptors may not be fully supported;
@@ -583,3 +633,4 @@ MAJOR.MINOR.PATCH
 ## License
 
 MIT
+```
