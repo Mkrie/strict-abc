@@ -13,7 +13,7 @@ import inspect
 import typing
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -298,6 +298,18 @@ def test_check_names_enabled_raises_for_positional_only() -> None:
                 return beta
 
 
+def test_check_names_rejects_kwonly_rename_absorbed_by_kwargs() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_names": True}
+
+        @abstractmethod
+        def m(self, *, host: str) -> None: ...
+
+    with pytest.raises(TypeError, match="parameter name mismatch"):
+        class _Impl(Base):
+            def m(self, *, address: str = "", **kwargs: object) -> None: ...
+
+
 # ===================================================================
 # Positional-or-keyword rename / keyword contract
 # ===================================================================
@@ -579,6 +591,32 @@ def test_check_types_normalizes_none_annotation() -> None:
     Impl().m(None)
 
 
+def test_check_types_variadic_mismatch_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types": True}
+
+        @abstractmethod
+        def m(self, *args: int, **kwargs: str) -> None: ...
+
+    with pytest.raises(TypeError, match=r"type annotation mismatch for '\*args'"):
+        class _Impl(Base):
+            def m(self, *args: str, **kwargs: str) -> None: ...
+
+
+def test_check_types_variadic_missing_annotation_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types": True}
+
+        @abstractmethod
+        def m(self, *args: int, **kwargs: str) -> None: ...
+
+    with pytest.raises(
+        TypeError, match=r"missing type annotation for '\*\*kwargs'"
+    ):
+        class _Impl(Base):
+            def m(self, *args: int, **kwargs) -> None: ...
+
+
 # ===================================================================
 # check_types_contravariant
 # ===================================================================
@@ -647,6 +685,19 @@ def test_contravariant_keyword_only() -> None:
         def m(self, *, a: object) -> None: ...
 
     Impl().m(a=1)
+
+
+def test_contravariant_variadic_widening_allowed() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types_contravariant": True}
+
+        @abstractmethod
+        def m(self, *args: int, **kwargs: int) -> None: ...
+
+    class Impl(Base):
+        def m(self, *args: object, **kwargs: object) -> None: ...
+
+    Impl().m(1, a=2)
 
 
 def test_contravariant_missing_child_annotation_raises() -> None:
@@ -1311,6 +1362,19 @@ def test_subclass_can_keep_method_abstract() -> None:
         Middle()
 
 
+def test_deep_subclass_override_is_validated() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, a: int = 1) -> None: ...
+
+    class Middle(Base):
+        def m(self, a: int = 1) -> None: ...
+
+    with pytest.raises(TypeError, match="removing default value"):
+        class _Impl(Middle):
+            def m(self, a: int) -> None: ...
+
+
 def test_non_abstract_methods_are_not_validated() -> None:
     class Base(StrictABC):
         def m(self, a: int) -> int:
@@ -1753,9 +1817,27 @@ def test_is_return_compatible_generic_origin_not_type() -> None:
     )
 
 
-def test_is_return_compatible_generic_one_origin_missing() -> None:
+def test_is_return_compatible_bare_parent_accepts_parameterized_child() -> None:
+    # A bare parent type has no generic constraints, so narrowing is valid.
     assert StrictABCMeta._is_return_compatible(list[int], list) is False
-    assert StrictABCMeta._is_return_compatible(list, list[int]) is False
+    assert StrictABCMeta._is_return_compatible(list, list[int]) is True
+    assert StrictABCMeta._is_return_compatible(typing.Sequence, list[int]) is True
+
+
+def test_is_return_compatible_bare_parent_alias_accepts_bare_child() -> None:
+    assert StrictABCMeta._is_return_compatible(typing.List, list) is True  # noqa: UP006
+    assert StrictABCMeta._is_return_compatible(typing.Sequence, list) is True
+    assert StrictABCMeta._is_return_compatible(typing.Iterable, list) is True
+    assert StrictABCMeta._is_return_compatible(typing.Sequence, dict) is False
+
+
+def test_is_return_compatible_union_subset() -> None:
+    assert StrictABCMeta._is_return_compatible(int | str, int) is True
+    assert StrictABCMeta._is_return_compatible(int | str, int | str) is True
+    assert (
+        StrictABCMeta._is_return_compatible(int | str | bytes, int | str) is True
+    )
+    assert StrictABCMeta._is_return_compatible(int | str, object) is False
 
 
 def test_is_return_compatible_generic_issubclass_typeerror() -> None:
@@ -1961,6 +2043,36 @@ def test_lsp_exempt_descriptor_mismatch_skipped() -> None:
     assert Impl().m(1) == 1
 
 
+def test_lsp_exempt_under_staticmethod_skips_validation() -> None:
+    class Base(StrictABC):
+        @staticmethod
+        @abstractmethod
+        def m(x: int = 1) -> int: ...
+
+    class Impl(Base):
+        @staticmethod
+        @lsp_exempt
+        def m(x: int) -> int:
+            return x
+
+    assert Impl.m(1) == 1
+
+
+def test_lsp_exempt_under_classmethod_skips_validation() -> None:
+    class Base(StrictABC):
+        @classmethod
+        @abstractmethod
+        def m(cls, x: int = 1) -> int: ...
+
+    class Impl(Base):
+        @classmethod
+        @lsp_exempt
+        def m(cls, x: int) -> int:
+            return x
+
+    assert Impl.m(1) == 1
+
+
 # ===================================================================
 # strict() class decorator
 # ===================================================================
@@ -2073,6 +2185,45 @@ def test_async_abstract_async_impl_allowed() -> None:
     assert asyncio.run(Impl().m()) == 1
 
 
+def test_async_generator_abstract_sync_generator_impl_raises() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        async def m(self) -> AsyncIterator[int]:
+            yield 1
+
+    with pytest.raises(TypeError, match="async/sync mismatch"):
+        class _Impl(Base):
+            def m(self) -> Iterator[int]:
+                yield 1
+
+
+def test_async_generator_abstract_async_generator_impl_allowed() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        async def m(self) -> AsyncIterator[int]:
+            yield 1
+
+    class Impl(Base):
+        async def m(self) -> AsyncIterator[int]:
+            yield 1
+
+    async def collect() -> list[int]:
+        return [item async for item in Impl().m()]
+
+    assert asyncio.run(collect()) == [1]
+
+
+def test_async_coroutine_async_generator_impl_raises() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        async def m(self) -> int: ...
+
+    with pytest.raises(TypeError, match="async/sync mismatch"):
+        class _Impl(Base):
+            async def m(self) -> AsyncIterator[int]:
+                yield 1
+
+
 # ===================================================================
 # _normalize_annotation
 # ===================================================================
@@ -2100,6 +2251,29 @@ def test_normalize_annotation_empty_passthrough() -> None:
 
 def test_normalize_annotation_type_passthrough() -> None:
     assert StrictABCMeta._normalize_annotation(int) is int
+
+
+def test_normalize_annotation_string_none() -> None:
+    assert StrictABCMeta._normalize_annotation("None") is type(None)
+
+
+def test_normalize_annotation_string_generic() -> None:
+    assert StrictABCMeta._normalize_annotation("list[int]") == list[int]
+
+
+def test_normalize_annotation_does_not_execute_builtin_functions(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "annotation.txt"
+    annotations = [
+        f"open({str(target)!r}, 'w').write('owned')",
+        f"typing.__dict__['__builtins__']['open']({str(target)!r}, 'w')"
+        f".write('owned')",
+    ]
+
+    for annotation in annotations:
+        assert StrictABCMeta._normalize_annotation(annotation) == annotation
+        assert not target.exists()
 
 
 # ===================================================================
@@ -2170,6 +2344,36 @@ def test_contravariant_typing_union_not_containing() -> None:
             bytes,
             int | str,
         )
+        is False
+    )
+
+
+def test_contravariant_generic_widening() -> None:
+    assert (
+        StrictABCMeta._is_param_compatible_contravariant(list[int], list)
+        is True
+    )
+    assert (
+        StrictABCMeta._is_param_compatible_contravariant(
+            list[int], typing.Sequence
+        )
+        is True
+    )
+    assert (
+        StrictABCMeta._is_param_compatible_contravariant(list, list[int])
+        is False
+    )
+
+
+def test_contravariant_parent_union() -> None:
+    assert (
+        StrictABCMeta._is_param_compatible_contravariant(
+            int | str, int | str | float
+        )
+        is True
+    )
+    assert (
+        StrictABCMeta._is_param_compatible_contravariant(int | str, int)
         is False
     )
     

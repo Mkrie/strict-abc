@@ -22,6 +22,7 @@ from __future__ import annotations
 import ast
 import builtins
 import inspect
+import types
 import typing
 import warnings
 from abc import ABC, ABCMeta
@@ -40,6 +41,14 @@ __all__ = [
 ]
 
 __version__ = "0.3.0"
+
+# Only builtin types may be resolved from string annotations. Never expose
+# functions such as ``open``, ``eval``, or ``getattr`` to annotation evaluation.
+_SAFE_ANNOTATION_BUILTINS: frozenset[str] = frozenset(
+    name
+    for name in dir(builtins)
+    if isinstance(getattr(builtins, name), type)
+)
 
 # ---------------------------------------------------------------------------
 # Type aliases
@@ -229,6 +238,17 @@ class StrictABCMeta(ABCMeta):
             if isinstance(abstract_methods, (frozenset, set)):
                 parent_abstracts.update(abstract_methods)
 
+        # Direct bases only expose methods that are still abstract. A class can
+        # also override an implementation that already satisfied an abstract
+        # contract higher in the MRO, so validate names redefined in this class
+        # body against every abstract declaration in the MRO.
+        for base in cls.__mro__[1:]:
+            for attr_name, base_attr in base.__dict__.items():
+                if attr_name in namespace and getattr(
+                    base_attr, "__isabstractmethod__", False
+                ):
+                    parent_abstracts.add(attr_name)
+
         cls_abstracts_obj: object = getattr(cls, "__abstractmethods__", frozenset())
         cls_abstracts: frozenset[str] = (
             cast("frozenset[str]", cls_abstracts_obj)
@@ -247,7 +267,7 @@ class StrictABCMeta(ABCMeta):
                 continue
             if getattr(concrete, "__isabstractmethod__", False):
                 continue
-            if getattr(concrete, "__lsp_exempt__", False):
+            if mcls._is_lsp_exempt(concrete):
                 continue
 
             abstract_attrs = mcls._find_abstract_attrs(cls, meth_name)
@@ -280,17 +300,17 @@ class StrictABCMeta(ABCMeta):
                     continue
 
                 # Async/sync mismatch check.
-                parent_is_coro = inspect.iscoroutinefunction(parent_func)
-                child_is_coro = inspect.iscoroutinefunction(child_func)
+                parent_async_kind = mcls._async_kind(parent_func)
+                child_async_kind = mcls._async_kind(child_func)
 
-                if parent_is_coro != child_is_coro:
+                if parent_async_kind != child_async_kind:
                     violations.append(
                         LSPViolation(
                             cls.__name__,
                             meth_name,
                             f"async/sync mismatch "
-                            f"(parent is {'async' if parent_is_coro else 'sync'}, "
-                            f"child is {'async' if child_is_coro else 'sync'})",
+                            f"(parent is {parent_async_kind}, "
+                            f"child is {child_async_kind})",
                         )
                     )
                     continue
@@ -402,6 +422,35 @@ class StrictABCMeta(ABCMeta):
 
         return attrs
 
+    @staticmethod
+    def _is_lsp_exempt(attr: object) -> bool:
+        """Return whether an attribute is marked with ``@lsp_exempt``.
+
+        The marker may live on the function itself, on the descriptor
+        (``staticmethod`` / ``classmethod``), or on a property getter,
+        depending on decorator order.
+
+        Args:
+            attr: A class-level attribute.
+
+        Returns:
+            ``True`` if any underlying callable is exempt.
+        """
+        candidates: list[object] = [attr]
+
+        func = getattr(attr, "__func__", None)
+        if func is not None:
+            candidates.append(func)
+
+        fget = getattr(attr, "fget", None)
+        if fget is not None:
+            candidates.append(fget)
+
+        return any(
+            bool(getattr(candidate, "__lsp_exempt__", False))
+            for candidate in candidates
+        )
+
     # ------------------------------------------------------------------
     # Descriptor introspection
     # ------------------------------------------------------------------
@@ -466,6 +515,26 @@ class StrictABCMeta(ABCMeta):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _async_kind(func: Callable[..., Any]) -> str:
+        """Classify a callable as ``"async"``, ``"async generator"``, or ``"sync"``.
+
+        Regular generator functions are treated as ``"sync"`` so that an
+        abstract method declared with ``def`` may still be implemented as a
+        generator (a common pattern for ``Iterator`` return types).
+
+        Args:
+            func: The callable to classify.
+
+        Returns:
+            A human-readable kind used in violation messages.
+        """
+        if inspect.iscoroutinefunction(func):
+            return "async"
+        if inspect.isasyncgenfunction(func):
+            return "async generator"
+        return "sync"
+
+    @staticmethod
     def _signature(func: Callable[..., Any]) -> inspect.Signature:
         """Obtain the signature of a callable, unwrapping decorators.
 
@@ -509,27 +578,41 @@ class StrictABCMeta(ABCMeta):
                 # Parse the annotation string
                 tree = ast.parse(annotation, mode='eval')
 
-                # Security check: reject dangerous patterns
+                # Security check: reject dangerous patterns.
+                #
+                # Underscore attributes are blocked wholesale (``__dict__``,
+                # ``__globals__``, ``__class__``, ...), because they can be
+                # used to reach the real builtins through otherwise safe
+                # objects such as the ``typing`` module. Dunder names are
+                # blocked for the same reason.
+                dangerous_calls = frozenset(
+                    {"exec", "eval", "compile", "open", "getattr", "setattr",
+                     "globals", "locals", "vars", "input", "breakpoint"}
+                )
+                dangerous_attributes = frozenset(
+                    {"system", "popen", "exec", "execfile", "func_globals",
+                     "f_globals", "gi_frame", "cr_frame"}
+                )
+
                 for node in ast.walk(tree):
-                    # Block function calls that could be dangerous
-                    if isinstance(node, ast.Call):
-                        func = node.func
-                        # Block direct calls to __import__, __builtins__, etc.
-                        if (isinstance(func, ast.Name) and 
-                            func.id in ['__import__', '__builtins__', 'exec', 'eval']):
+                    if isinstance(node, ast.Name) and node.id.startswith("__"):
+                        return annotation
+
+                    if isinstance(node, ast.Attribute):
+                        if node.attr.startswith("_"):
                             return annotation
-                        # Block attribute access to dangerous methods
-                        if (isinstance(func, ast.Attribute) and 
-                            func.attr in ['__import__', '__builtins__', '__class__',
-                                          '__subclasses__', '__bases__', '__mro__']):
+                        if node.attr in dangerous_attributes:
                             return annotation
 
-                    # Block dangerous attribute access
-                    if (isinstance(node, ast.Attribute) and 
-                        node.attr in ['__import__', '__builtins__', '__class__',
-                                      '__subclasses__', '__bases__', '__mro__',
-                                      'system', 'popen', 'exec', 'execfile']):
-                        return annotation
+                    if isinstance(node, ast.Call):
+                        func = node.func
+                        if isinstance(func, ast.Name) and func.id in dangerous_calls:
+                            return annotation
+                        if (
+                            isinstance(func, ast.Attribute)
+                            and func.attr in dangerous_calls
+                        ):
+                            return annotation
 
                 # Extract all names used in the annotation
                 names: set[str] = set()
@@ -540,17 +623,17 @@ class StrictABCMeta(ABCMeta):
                         # Handle things like typing.Optional
                         names.add(node.value.id)
 
-                # Build safe namespace with builtins and typing
+                # Build a restricted namespace. ``eval`` would otherwise
+                # inject the full ``builtins`` module, exposing functions such
+                # as ``open`` and ``getattr`` to annotation strings.
                 safe_globals: dict[str, Any] = {
-                    'None': None,
-                    'True': True,
-                    'False': False,
-                    'typing': typing,
+                    "__builtins__": {},
+                    "typing": typing,
                 }
 
-                # Add common built-in types
+                # Only expose builtin types, never builtin functions.
                 for name in names:
-                    if hasattr(builtins, name):
+                    if name in _SAFE_ANNOTATION_BUILTINS:
                         safe_globals[name] = getattr(builtins, name)
 
                 # Add typing symbols directly if they're used
@@ -562,7 +645,10 @@ class StrictABCMeta(ABCMeta):
                         safe_globals[symbol] = getattr(typing, symbol)
 
                 # Evaluate with safe namespace
-                return eval(compile(tree, '<annotation>', 'eval'), safe_globals)
+                result = eval(compile(tree, '<annotation>', 'eval'), safe_globals)
+                if result is None:
+                    return type(None)
+                return result
 
             except Exception:
                 # If parsing or evaluation fails, return the original string
@@ -605,6 +691,21 @@ class StrictABCMeta(ABCMeta):
             return cast("object", args)
         return cast("object", getattr(annotation, "__args__", ()))
 
+    @staticmethod
+    def _union_args(annotation: object) -> tuple[Any, ...] | None:
+        """Return union members for PEP 604 and ``typing.Union`` aliases.
+
+        Args:
+            annotation: Type annotation to inspect.
+
+        Returns:
+            A tuple of union members, or ``None`` if not a union.
+        """
+        origin = StrictABCMeta._get_origin(annotation)
+        if origin is types.UnionType or origin is typing.Union:
+            return cast("tuple[Any, ...]", StrictABCMeta._get_args(annotation))
+        return None
+
     # ------------------------------------------------------------------
     # Type compatibility
     # ------------------------------------------------------------------
@@ -638,39 +739,65 @@ class StrictABCMeta(ABCMeta):
         if p is object:
             return True
 
+        c_union = StrictABCMeta._union_args(c)
+        if c_union is not None:
+            return all(
+                StrictABCMeta._is_return_compatible(p, member)
+                for member in c_union
+            )
+
+        p_union = StrictABCMeta._union_args(p)
+        if p_union is not None:
+            return any(
+                StrictABCMeta._is_return_compatible(member, c)
+                for member in p_union
+            )
+
         p_origin = StrictABCMeta._get_origin(p)
         c_origin = StrictABCMeta._get_origin(c)
+        p_args = cast("tuple[Any, ...]", StrictABCMeta._get_args(p))
+        c_args = cast("tuple[Any, ...]", StrictABCMeta._get_args(c))
 
         # Generic aliases must be compared through origin/args before the
         # plain issubclass() branch. On Python 3.10 parameterized generics
         # may enter the isinstance(..., type) path, but issubclass() on them
         # is not a reliable LSP check.
-        if p_origin is not None and c_origin is not None:
-            if p == c:
-                return True
-
-            p_args = StrictABCMeta._get_args(p)
-            c_args = StrictABCMeta._get_args(c)
-
-            if p_origin == c_origin:
-                return p_args == c_args
-
-            if isinstance(p_origin, type) and isinstance(c_origin, type):
+        if p_origin is None and c_origin is None:
+            if isinstance(p, type) and isinstance(c, type):
                 try:
-                    if issubclass(c_origin, p_origin):
-                        return p_args == c_args
+                    return issubclass(c, p)
                 except TypeError:
                     return False
-
             return False
 
-        # If only one side is a parameterized generic, be conservative.
-        if p_origin is not None or c_origin is not None:
+        # A bare parent (e.g. ``list``) accepts any parameterized subtype
+        # (e.g. ``list[int]``).
+        if p_origin is None:
+            if isinstance(p, type) and isinstance(c_origin, type):
+                try:
+                    return issubclass(c_origin, p)
+                except TypeError:
+                    return False
             return False
 
-        if isinstance(p, type) and isinstance(c, type):
+        # A bare parent alias (e.g. ``typing.List`` / ``typing.Sequence``)
+        # has no generic constraints, so a bare subclass is covariant.
+        if c_origin is None:
+            if not p_args and isinstance(p_origin, type) and isinstance(c, type):
+                try:
+                    return issubclass(c, p_origin)
+                except TypeError:
+                    return False
+            return False
+
+        if isinstance(p_origin, type) and isinstance(c_origin, type):
             try:
-                return issubclass(c, p)
+                if issubclass(c_origin, p_origin):
+                    return (
+                        not p_args
+                        or any(arg is Any for arg in p_args)
+                        or p_args == c_args
+                    )
             except TypeError:
                 return False
 
@@ -708,33 +835,64 @@ class StrictABCMeta(ABCMeta):
         if p == c:
             return True
 
-        if isinstance(p, type) and isinstance(c, type):
-            try:
-                return issubclass(p, c)
-            except TypeError:
-                return False
-
-        # Union types (Python 3.10+): int | str
-        import types
-
-        if isinstance(c, types.UnionType):
-            c_args: tuple[Any, ...] = c.__args__
-            return any(
-                StrictABCMeta._is_param_compatible_contravariant(p, arg)
-                for arg in c_args
+        p_union = StrictABCMeta._union_args(p)
+        if p_union is not None:
+            return all(
+                StrictABCMeta._is_param_compatible_contravariant(member, c)
+                for member in p_union
             )
 
-        # typing.Union
-        c_origin = getattr(c, "__origin__", None)
-        if c_origin is not None:
-            import typing
+        c_union = StrictABCMeta._union_args(c)
+        if c_union is not None:
+            return any(
+                StrictABCMeta._is_param_compatible_contravariant(p, member)
+                for member in c_union
+            )
 
-            if c_origin is typing.Union:
-                c_args = getattr(c, "__args__", ())
-                return any(
-                    StrictABCMeta._is_param_compatible_contravariant(p, arg)
-                    for arg in c_args
-                )
+        p_origin = StrictABCMeta._get_origin(p)
+        c_origin = StrictABCMeta._get_origin(c)
+
+        if p_origin is None and c_origin is None:
+            if isinstance(p, type) and isinstance(c, type):
+                try:
+                    return issubclass(p, c)
+                except TypeError:
+                    return False
+            return False
+
+        if p_origin is None:
+            # A bare typing alias with no arguments (e.g. ``typing.Sequence``)
+            # is a valid supertype of a bare class.
+            if (
+                c_origin is not None
+                and not StrictABCMeta._get_args(c)
+                and isinstance(p, type)
+                and isinstance(c_origin, type)
+            ):
+                try:
+                    return issubclass(p, c_origin)
+                except TypeError:
+                    return False
+            return False
+
+        # Parent is parameterized; the child may widen it to a supertype.
+        if c_origin is None:
+            if isinstance(c, type) and isinstance(p_origin, type):
+                try:
+                    return issubclass(p_origin, c)
+                except TypeError:
+                    return False
+            return False
+
+        p_args = cast("tuple[Any, ...]", StrictABCMeta._get_args(p))
+        c_args = cast("tuple[Any, ...]", StrictABCMeta._get_args(c))
+
+        if isinstance(p_origin, type) and isinstance(c_origin, type):
+            try:
+                if issubclass(p_origin, c_origin):
+                    return not c_args or p_args == c_args
+            except TypeError:
+                return False
 
         return False
 
@@ -787,14 +945,82 @@ class StrictABCMeta(ABCMeta):
             c_params = c_params[1:]
 
         # Detect variadic parameters.
-        p_has_var_pos = any(
-            p.kind == inspect.Parameter.VAR_POSITIONAL for p in p_params
+        p_var_pos = next(
+            (p for p in p_params if p.kind == inspect.Parameter.VAR_POSITIONAL),
+            None,
         )
-        p_has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in p_params)
-        c_has_var_pos = any(
-            c.kind == inspect.Parameter.VAR_POSITIONAL for c in c_params
+        p_var_kw = next(
+            (p for p in p_params if p.kind == inspect.Parameter.VAR_KEYWORD),
+            None,
         )
-        c_has_var_kw = any(c.kind == inspect.Parameter.VAR_KEYWORD for c in c_params)
+        c_var_pos = next(
+            (c for c in c_params if c.kind == inspect.Parameter.VAR_POSITIONAL),
+            None,
+        )
+        c_var_kw = next(
+            (c for c in c_params if c.kind == inspect.Parameter.VAR_KEYWORD),
+            None,
+        )
+
+        p_has_var_pos = p_var_pos is not None
+        p_has_var_kw = p_var_kw is not None
+        c_has_var_pos = c_var_pos is not None
+        c_has_var_kw = c_var_kw is not None
+
+        def check_variadic_annotation(
+            parent_param: inspect.Parameter,
+            child_param: inspect.Parameter,
+        ) -> None:
+            """Validate annotations on matched ``*args`` / ``**kwargs``."""
+            if not (check_types or check_types_contravariant):
+                return
+
+            p_has_ann = parent_param.annotation is not inspect.Parameter.empty
+            c_has_ann = child_param.annotation is not inspect.Parameter.empty
+
+            label = (
+                f"*{parent_param.name}"
+                if parent_param.kind == inspect.Parameter.VAR_POSITIONAL
+                else f"**{parent_param.name}"
+            )
+
+            if p_has_ann and not c_has_ann:
+                violations.append(
+                    LSPViolation(
+                        class_name,
+                        meth_name,
+                        f"missing type annotation for '{label}'",
+                    )
+                )
+                return
+
+            if not (p_has_ann and c_has_ann):
+                return
+
+            p_ann = StrictABCMeta._normalize_annotation(parent_param.annotation)
+            c_ann = StrictABCMeta._normalize_annotation(child_param.annotation)
+
+            if check_types_contravariant:
+                if not StrictABCMeta._is_param_compatible_contravariant(
+                    p_ann, c_ann
+                ):
+                    violations.append(
+                        LSPViolation(
+                            class_name,
+                            meth_name,
+                            f"parameter type for '{label}' is not "
+                            f"contravariant (parent: {p_ann}, child: {c_ann})",
+                        )
+                    )
+            elif p_ann != c_ann:
+                violations.append(
+                    LSPViolation(
+                        class_name,
+                        meth_name,
+                        f"type annotation mismatch for '{label}' "
+                        f"(expected {p_ann}, got {c_ann})",
+                    )
+                )
 
         # --- Variadic removal -------------------------------------------
 
@@ -815,6 +1041,11 @@ class StrictABCMeta(ABCMeta):
                     "removed **kwargs from parent signature (violates LSP)",
                 )
             )
+
+        if p_var_pos is not None and c_var_pos is not None:
+            check_variadic_annotation(p_var_pos, c_var_pos)
+        if p_var_kw is not None and c_var_kw is not None:
+            check_variadic_annotation(p_var_kw, c_var_kw)
 
         # --- Categorize parameters --------------------------------------
 
@@ -840,6 +1071,9 @@ class StrictABCMeta(ABCMeta):
         c_by_name_keyword: dict[str, inspect.Parameter] = {
             c.name: c for c in c_params if c.kind in keyword_accessible_kinds
         }
+        c_param_names = {c.name for c in c_params}
+
+        reported_name_mismatches: set[str] = set()
 
         # --- Positional compatibility -----------------------------------
 
@@ -889,6 +1123,7 @@ class StrictABCMeta(ABCMeta):
 
             # Name check (explicit option).
             if check_names and p.name != c.name:
+                reported_name_mismatches.add(p.name)
                 violations.append(
                     LSPViolation(
                         class_name,
@@ -1079,6 +1314,19 @@ class StrictABCMeta(ABCMeta):
                             meth_name,
                             f"cannot accept parent keyword parameter "
                             f"'{p.name}' without **kwargs",
+                        )
+                    )
+                elif (
+                    check_names
+                    and p.name not in c_param_names
+                    and p.name not in reported_name_mismatches
+                ):
+                    violations.append(
+                        LSPViolation(
+                            class_name,
+                            meth_name,
+                            f"parameter name mismatch "
+                            f"(expected '{p.name}', got '**kwargs')",
                         )
                     )
 

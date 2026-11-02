@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- Validate overrides in deep subclasses that re-implement a method already
+  satisfied by an intermediate base class.
+- Enforce `check_types` / `check_types_contravariant` on `*args` and
+  `**kwargs` annotations.
+- Enforce `check_names` when a parent keyword parameter is absorbed by a
+  child `**kwargs`.
+- Detect async/sync mismatches for async generator methods (`async def`
+  containing `yield`).
+- Detect `@lsp_exempt` when it is applied under `@staticmethod`,
+  `@classmethod`, or `@property`.
+- Fix false negatives and false positives in return/parameter compatibility
+  for bare versus parameterized generic types and unions.
+- Restrict string-annotation evaluation so builtin functions (for example
+  `open`) and dunder attribute access cannot be reached from annotations.
+
 ## 0.3.0
 
 ### Added
