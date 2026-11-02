@@ -40,7 +40,7 @@ __all__ = [
     "strict",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Only builtin types may be resolved from string annotations. Never expose
 # functions such as ``open``, ``eval``, or ``getattr`` to annotation evaluation.
