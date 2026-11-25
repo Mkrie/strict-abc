@@ -86,9 +86,7 @@ class StrictABCMeta(ABCMeta):
             check_names=options.get("check_names", False),
             check_defaults=options.get("check_defaults", True),
             check_types=options.get("check_types", False),
-            check_types_contravariant=options.get(
-                "check_types_contravariant", False
-            ),
+            check_types_contravariant=options.get("check_types_contravariant", False),
             check_return_type=options.get("check_return_type", False),
         )
 
@@ -100,9 +98,7 @@ class StrictABCMeta(ABCMeta):
 
         for base in cls.__mro__[1:]:
             for attr_name, base_attr in base.__dict__.items():
-                if attr_name in namespace and getattr(
-                    base_attr, "__isabstractmethod__", False
-                ):
+                if attr_name in namespace and getattr(base_attr, "__isabstractmethod__", False):
                     parent_abstracts.add(attr_name)
 
         cls_abstracts_obj: object = getattr(cls, "__abstractmethods__", frozenset())
@@ -136,8 +132,7 @@ class StrictABCMeta(ABCMeta):
                         LSPViolation(
                             cls.__name__,
                             meth_name,
-                            f"descriptor type mismatch "
-                            f"(expected {parent_kind}, got {child_kind})",
+                            f"descriptor type mismatch (expected {parent_kind}, got {child_kind})",
                         )
                     )
                     continue

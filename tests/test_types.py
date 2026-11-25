@@ -25,6 +25,7 @@ def test_check_types_enabled_missing_annotation_raises() -> None:
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="missing type annotation"):
+
         class _Impl(Base):
             def m(self, a):
                 return a
@@ -38,6 +39,7 @@ def test_check_types_enabled_mismatch_raises() -> None:
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="type annotation mismatch"):
+
         class _Impl(Base):
             def m(self, a: str) -> int:
                 return "x"
@@ -77,6 +79,7 @@ def test_check_types_keyword_only_mismatch_raises() -> None:
         def m(self, *, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="type annotation mismatch"):
+
         class _Impl(Base):
             def m(self, *, a: str) -> int:
                 return "x"
@@ -90,6 +93,7 @@ def test_check_types_keyword_only_missing_annotation_raises() -> None:
         def m(self, *, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="missing type annotation"):
+
         class _Impl(Base):
             def m(self, *, a):
                 return a
@@ -159,6 +163,7 @@ def test_check_types_variadic_mismatch_raises() -> None:
         def m(self, *args: int, **kwargs: str) -> None: ...
 
     with pytest.raises(TypeError, match=r"type annotation mismatch for '\*args'"):
+
         class _Impl(Base):
             def m(self, *args: str, **kwargs: str) -> None: ...
 
@@ -170,9 +175,8 @@ def test_check_types_variadic_missing_annotation_raises() -> None:
         @abstractmethod
         def m(self, *args: int, **kwargs: str) -> None: ...
 
-    with pytest.raises(
-        TypeError, match=r"missing type annotation for '\*\*kwargs'"
-    ):
+    with pytest.raises(TypeError, match=r"missing type annotation for '\*\*kwargs'"):
+
         class _Impl(Base):
             def m(self, *args: int, **kwargs) -> None: ...
 
@@ -185,6 +189,7 @@ def test_check_types_keyword_absorbed_by_kwargs_mismatch_raises() -> None:
         def m(self, a: int) -> None: ...
 
     with pytest.raises(TypeError, match="type annotation mismatch for 'a'"):
+
         class _Impl(Base):
             def m(self, *args: int, **kwargs: str) -> None: ...
 
@@ -197,6 +202,7 @@ def test_check_types_positional_only_absorbed_by_varargs_mismatch_raises() -> No
         def m(self, a: int, /) -> None: ...
 
     with pytest.raises(TypeError, match="type annotation mismatch for 'a'"):
+
         class _Impl(Base):
             def m(self, *args: str) -> None: ...
 
@@ -223,6 +229,7 @@ def test_check_types_reordered_later_parameter_mismatch_raises() -> None:
         def m(self, a: int = 0) -> None: ...
 
     with pytest.raises(TypeError, match="type annotation mismatch for 'a'"):
+
         class _Impl(Base):
             def m(self, b: int = 1, a: str = 0) -> None: ...
 
@@ -253,6 +260,7 @@ def test_contravariant_narrower_type_raises() -> None:
         def m(self, a: object) -> None: ...
 
     with pytest.raises(TypeError, match="not contravariant"):
+
         class _Impl(Base):
             def m(self, a: int) -> None: ...
 
@@ -331,6 +339,7 @@ def test_contravariant_absorbed_fixed_parameter_narrowing_raises() -> None:
         def m(self, a: object) -> None: ...
 
     with pytest.raises(TypeError, match="parameter type for 'a' is not contravariant"):
+
         class _Impl(Base):
             def m(self, *args: object, **kwargs: int) -> None: ...
 
@@ -343,6 +352,7 @@ def test_contravariant_missing_child_annotation_raises() -> None:
         def m(self, a: int) -> None: ...
 
     with pytest.raises(TypeError, match="missing type annotation"):
+
         class _Impl(Base):
             def m(self, a) -> None: ...
 
@@ -388,6 +398,7 @@ def test_return_type_not_covariant_raises() -> None:
         def m(self) -> str: ...
 
     with pytest.raises(TypeError, match="return type not covariant"):
+
         class _Impl(Base):
             def m(self) -> object:
                 return object()
@@ -401,6 +412,7 @@ def test_return_type_missing_annotation_raises() -> None:
         def m(self) -> int: ...
 
     with pytest.raises(TypeError, match="missing return type annotation"):
+
         class _Impl(Base):
             def m(self):
                 return 1
@@ -513,6 +525,7 @@ def test_return_type_generic_args_mismatch_raises() -> None:
         def m(self) -> list[object]: ...
 
     with pytest.raises(TypeError, match="return type not covariant"):
+
         class _Impl(Base):
             def m(self) -> list[str]:
                 return ["x"]
@@ -605,9 +618,7 @@ def test_is_return_compatible_bare_parent_alias_accepts_bare_child() -> None:
 def test_is_return_compatible_union_subset() -> None:
     assert StrictABCMeta._is_return_compatible(int | str, int) is True
     assert StrictABCMeta._is_return_compatible(int | str, int | str) is True
-    assert (
-        StrictABCMeta._is_return_compatible(int | str | bytes, int | str) is True
-    )
+    assert StrictABCMeta._is_return_compatible(int | str | bytes, int | str) is True
     assert StrictABCMeta._is_return_compatible(int | str, object) is False
 
 
@@ -725,30 +736,11 @@ def test_contravariant_typing_union_not_containing() -> None:
 
 
 def test_contravariant_generic_widening() -> None:
-    assert (
-        StrictABCMeta._is_param_compatible_contravariant(list[int], list)
-        is True
-    )
-    assert (
-        StrictABCMeta._is_param_compatible_contravariant(
-            list[int], typing.Sequence
-        )
-        is True
-    )
-    assert (
-        StrictABCMeta._is_param_compatible_contravariant(list, list[int])
-        is False
-    )
+    assert StrictABCMeta._is_param_compatible_contravariant(list[int], list) is True
+    assert StrictABCMeta._is_param_compatible_contravariant(list[int], typing.Sequence) is True
+    assert StrictABCMeta._is_param_compatible_contravariant(list, list[int]) is False
 
 
 def test_contravariant_parent_union() -> None:
-    assert (
-        StrictABCMeta._is_param_compatible_contravariant(
-            int | str, int | str | float
-        )
-        is True
-    )
-    assert (
-        StrictABCMeta._is_param_compatible_contravariant(int | str, int)
-        is False
-    )
+    assert StrictABCMeta._is_param_compatible_contravariant(int | str, int | str | float) is True
+    assert StrictABCMeta._is_param_compatible_contravariant(int | str, int) is False

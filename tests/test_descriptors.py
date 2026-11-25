@@ -40,6 +40,7 @@ def test_staticmethod_descriptor_mismatch_raises() -> None:
         def m(x: int) -> int: ...
 
     with pytest.raises(TypeError, match="descriptor type mismatch"):
+
         class _Impl(Base):
             def m(self, x: int) -> int:
                 return x
@@ -66,6 +67,7 @@ def test_classmethod_descriptor_mismatch_raises() -> None:
         def m(cls, x: int) -> int: ...
 
     with pytest.raises(TypeError, match="descriptor type mismatch"):
+
         class _Impl(Base):
             @staticmethod
             def m(x: int) -> int:
@@ -92,6 +94,7 @@ def test_method_to_property_descriptor_mismatch_raises() -> None:
         def m(self) -> int: ...
 
     with pytest.raises(TypeError, match="descriptor type mismatch"):
+
         class _Impl(Base):
             @property
             def m(self) -> int:
@@ -105,6 +108,7 @@ def test_property_to_method_descriptor_mismatch_raises() -> None:
         def value(self) -> int: ...
 
     with pytest.raises(TypeError, match="descriptor type mismatch"):
+
         class _Impl(Base):
             def value(self) -> int:
                 return 1
@@ -382,6 +386,7 @@ def test_async_abstract_sync_impl_raises() -> None:
         async def m(self) -> int: ...
 
     with pytest.raises(TypeError, match="async/sync mismatch"):
+
         class _Impl(Base):
             def m(self) -> int:
                 return 1
@@ -393,6 +398,7 @@ def test_sync_abstract_async_impl_raises() -> None:
         def m(self) -> int: ...
 
     with pytest.raises(TypeError, match="async/sync mismatch"):
+
         class _Impl(Base):
             async def m(self) -> int:
                 return 1
@@ -417,6 +423,7 @@ def test_async_generator_abstract_sync_generator_impl_raises() -> None:
             yield 1
 
     with pytest.raises(TypeError, match="async/sync mismatch"):
+
         class _Impl(Base):
             def m(self) -> Iterator[int]:
                 yield 1
@@ -444,6 +451,7 @@ def test_async_coroutine_async_generator_impl_raises() -> None:
         async def m(self) -> int: ...
 
     with pytest.raises(TypeError, match="async/sync mismatch"):
+
         class _Impl(Base):
             async def m(self) -> AsyncIterator[int]:
                 yield 1

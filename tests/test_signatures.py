@@ -66,6 +66,7 @@ def test_removing_default_raises() -> None:
         def m(self, a: int, b: int = 1) -> int: ...
 
     with pytest.raises(TypeError, match="removing default value"):
+
         class _Impl(Base):
             def m(self, a: int, b: int) -> int:
                 return a + b
@@ -105,6 +106,7 @@ def test_keyword_only_default_removal_by_name_raises() -> None:
         def m(self, *, a: int = 1) -> int: ...
 
     with pytest.raises(TypeError, match="removing default value"):
+
         class _Impl(Base):
             def m(self, *, a: int) -> int:
                 return a
@@ -121,6 +123,7 @@ def test_adding_required_parameter_without_variadic_raises() -> None:
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="new required parameter 'b'"):
+
         class _Impl(Base):
             def m(self, a: int, b: int) -> int:
                 return a + b
@@ -132,6 +135,7 @@ def test_fewer_positional_parameters_raises() -> None:
         def m(self, a: int, b: int) -> int: ...
 
     with pytest.raises(TypeError, match=r"without \*args"):
+
         class _Impl(Base):
             def m(self, a: int) -> int:
                 return a
@@ -143,6 +147,7 @@ def test_extra_required_positional_with_parent_optional_keyword_raises() -> None
         def m(self, *, a: int = 1) -> int: ...
 
     with pytest.raises(TypeError, match="new required parameter 'a'"):
+
         class _Impl(Base):
             def m(self, a: int) -> int:
                 return a
@@ -174,6 +179,7 @@ def test_check_names_enabled_raises() -> None:
         def m(self, alpha: int) -> int: ...
 
     with pytest.raises(TypeError, match="parameter name mismatch"):
+
         class _Impl(Base):
             def m(self, beta: int) -> int:
                 return beta
@@ -199,6 +205,7 @@ def test_check_names_enabled_raises_for_positional_only() -> None:
         def m(self, alpha: int, /) -> int: ...
 
     with pytest.raises(TypeError, match="parameter name mismatch"):
+
         class _Impl(Base):
             def m(self, beta: int) -> int:
                 return beta
@@ -212,6 +219,7 @@ def test_check_names_rejects_kwonly_rename_absorbed_by_kwargs() -> None:
         def m(self, *, host: str) -> None: ...
 
     with pytest.raises(TypeError, match="parameter name mismatch"):
+
         class _Impl(Base):
             def m(self, *, address: str = "", **kwargs: object) -> None: ...
 
@@ -227,6 +235,7 @@ def test_positional_or_keyword_rename_raises_by_default() -> None:
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="cannot accept parent keyword parameter"):
+
         class _Impl(Base):
             def m(self, b: int) -> int:
                 return b
@@ -254,6 +263,7 @@ def test_positional_or_keyword_rename_with_kwargs_required_raises() -> None:
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="has no default"):
+
         class _Impl(Base):
             def m(self, b: int, **kwargs: int) -> int:
                 return b
@@ -292,6 +302,7 @@ def test_same_positional_only_required_parameter_with_kwargs_raises() -> None:
         def m(self, a: int) -> None: ...
 
     with pytest.raises(TypeError, match="kind transition"):
+
         class _Impl(Base):
             def m(self, a: int, /, **kwargs: int) -> None: ...
 
@@ -313,6 +324,7 @@ def test_parent_keyword_colliding_with_reordered_child_parameter_raises() -> Non
         def m(self, key: str, /, *, value: int) -> None: ...
 
     with pytest.raises(TypeError, match="multiple values"):
+
         class _Impl(Base):
             def m(self, value: int) -> None: ...
 
@@ -323,6 +335,7 @@ def test_swapped_positional_parameters_collision_raises() -> None:
         def m(self, a: int, b: int = 1) -> None: ...
 
     with pytest.raises(TypeError, match="multiple values"):
+
         class _Impl(Base):
             def m(self, b: int = 1, a: int = 0) -> None: ...
 
@@ -333,6 +346,7 @@ def test_parent_varargs_keyword_only_collision_with_child_positional_raises() ->
         def m(self, *args: int, b: int = 1) -> None: ...
 
     with pytest.raises(TypeError, match="multiple values"):
+
         class _Impl(Base):
             def m(self, b: int = 1, *args: int) -> None: ...
 
@@ -343,6 +357,7 @@ def test_reordered_required_child_parameter_without_default_raises() -> None:
         def m(self, a: int) -> None: ...
 
     with pytest.raises(TypeError, match="has no default"):
+
         class _Impl(Base):
             def m(self, b: int, a: int = 0) -> None: ...
 
@@ -353,6 +368,7 @@ def test_keyword_only_rename_raises_by_default() -> None:
         def m(self, *, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="cannot accept parent keyword parameter"):
+
         class _Impl(Base):
             def m(self, *, b: int) -> int:
                 return b
@@ -389,6 +405,7 @@ def test_keyword_only_required_as_positional_only_required_raises() -> None:
         def m(self, *, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="new required parameter 'a'"):
+
         class _Impl(Base):
             def m(self, a: int, /) -> int:
                 return a
@@ -418,6 +435,7 @@ def test_positional_or_keyword_to_keyword_only_without_varargs_raises() -> None:
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match=r"without \*args"):
+
         class _Impl(Base):
             def m(self, *, a: int) -> int:
                 return a
@@ -429,6 +447,7 @@ def test_positional_or_keyword_to_keyword_only_with_varargs_required_raises() ->
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="must have a default value"):
+
         class _Impl(Base):
             def m(self, *args: int, a: int) -> int:
                 return a
@@ -458,6 +477,7 @@ def test_parent_var_positional_child_fixed_raises() -> None:
         def m(self, *args: int) -> None: ...
 
     with pytest.raises(TypeError, match=r"removed \*args"):
+
         class _Impl(Base):
             def m(self) -> None: ...
 
@@ -468,6 +488,7 @@ def test_parent_var_keyword_child_fixed_raises() -> None:
         def m(self, **kwargs: int) -> None: ...
 
     with pytest.raises(TypeError, match=r"removed \*\*kwargs"):
+
         class _Impl(Base):
             def m(self) -> None: ...
 
@@ -478,6 +499,7 @@ def test_parent_both_child_missing_kwargs_raises() -> None:
         def m(self, *args: int, **kwargs: int) -> None: ...
 
     with pytest.raises(TypeError, match=r"removed \*\*kwargs"):
+
         class _Impl(Base):
             def m(self, *args: int) -> None: ...
 
@@ -523,6 +545,7 @@ def test_parent_varargs_child_required_extra_raises() -> None:
         def m(self, *args: int) -> None: ...
 
     with pytest.raises(TypeError, match="new required parameter 'a'"):
+
         class _Impl(Base):
             def m(self, a: int, *args: int) -> None: ...
 
@@ -546,6 +569,7 @@ def test_parent_varargs_child_removes_default_on_existing_raises() -> None:
         def m(self, a: int = 1, *args: int) -> int: ...
 
     with pytest.raises(TypeError, match="removing default value"):
+
         class _Impl(Base):
             def m(self, a: int, *args: int) -> int:
                 return a
@@ -562,6 +586,7 @@ def test_parent_keyword_only_missing_without_kwargs_raises() -> None:
         def m(self, a: int, *, b: int = 1) -> int: ...
 
     with pytest.raises(TypeError, match="cannot accept parent keyword parameter 'b'"):
+
         class _Impl(Base):
             def m(self, a: int, *args: int) -> int:
                 return a
@@ -585,6 +610,7 @@ def test_missing_positional_or_keyword_keyword_requires_kwargs() -> None:
         def m(self, a: int, *args: int) -> int: ...
 
     with pytest.raises(TypeError, match=r"without \*\*kwargs"):
+
         class _Impl(Base):
             def m(self, *args: int) -> int:
                 return sum(args)
@@ -620,6 +646,7 @@ def test_extra_required_keyword_only_raises() -> None:
         def m(self, a: int, **kwargs: int) -> int: ...
 
     with pytest.raises(TypeError, match="new required keyword-only parameter 'b'"):
+
         class _Impl(Base):
             def m(self, a: int, *, b: int, **kwargs: int) -> int:
                 return a + b
@@ -660,6 +687,7 @@ def test_positional_or_keyword_to_positional_only_raises() -> None:
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="kind transition"):
+
         class _Impl(Base):
             def m(self, a: int, /) -> int:
                 return a

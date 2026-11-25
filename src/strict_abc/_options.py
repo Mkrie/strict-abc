@@ -39,9 +39,7 @@ def get_options(cls: type[Any]) -> StrictOptions:
         "check_names": bool(resolved.get("check_names", False)),
         "check_defaults": bool(resolved.get("check_defaults", True)),
         "check_types": bool(resolved.get("check_types", False)),
-        "check_types_contravariant": bool(
-            resolved.get("check_types_contravariant", False)
-        ),
+        "check_types_contravariant": bool(resolved.get("check_types_contravariant", False)),
         "check_return_type": bool(resolved.get("check_return_type", False)),
         "mode": resolved.get("mode", "error"),  # type: ignore[typeddict-item]
     }

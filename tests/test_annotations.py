@@ -74,10 +74,7 @@ def test_normalize_annotation_string_unresolvable() -> None:
 
 
 def test_normalize_annotation_empty_passthrough() -> None:
-    assert (
-        StrictABCMeta._normalize_annotation(inspect.Parameter.empty)
-        is inspect.Parameter.empty
-    )
+    assert StrictABCMeta._normalize_annotation(inspect.Parameter.empty) is inspect.Parameter.empty
 
 
 def test_normalize_annotation_type_passthrough() -> None:
@@ -98,8 +95,7 @@ def test_normalize_annotation_does_not_execute_builtin_functions(
     target = tmp_path / "annotation.txt"
     annotations = [
         f"open({str(target)!r}, 'w').write('owned')",
-        f"typing.__dict__['__builtins__']['open']({str(target)!r}, 'w')"
-        f".write('owned')",
+        f"typing.__dict__['__builtins__']['open']({str(target)!r}, 'w').write('owned')",
     ]
 
     for annotation in annotations:

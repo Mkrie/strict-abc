@@ -23,6 +23,7 @@ def test_options_inherited_from_base() -> None:
         def m(self, alpha: int, /) -> int: ...
 
     with pytest.raises(TypeError, match="parameter name mismatch"):
+
         class _Impl(Base):
             def m(self, beta: int) -> int:
                 return beta
@@ -52,6 +53,7 @@ def test_options_are_merged_from_base_classes() -> None:
         def m(self, a: int) -> int: ...
 
     with pytest.raises(TypeError, match="type annotation mismatch"):
+
         class _Impl(Base):
             __strict_options__ = {"check_names": True}
 
@@ -80,6 +82,7 @@ def test_options_mapping_non_dict_is_accepted() -> None:
         def m(self, alpha: int, /) -> int: ...
 
     with pytest.raises(TypeError, match="parameter name mismatch"):
+
         class _Impl(Base):
             def m(self, beta: int) -> int:
                 return beta
@@ -93,6 +96,7 @@ def test_options_non_mapping_is_ignored() -> None:
         def m(self, a: int = 1) -> int: ...
 
     with pytest.raises(TypeError, match="removing default value"):
+
         class _Impl(Base):
             def m(self, a: int) -> int:
                 return a
@@ -106,6 +110,7 @@ def test_invalid_strict_options_are_ignored() -> None:
         def m(self, a: int = 1) -> int: ...
 
     with pytest.raises(TypeError, match="removing default value"):
+
         class _Impl(Base):
             def m(self, a: int) -> int:
                 return a

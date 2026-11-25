@@ -43,8 +43,7 @@ def _bind(
     kwargs: dict[str, Any],
 ) -> inspect.BoundArguments:
     has_var_keyword = any(
-        parameter.kind == _PARAMETER.VAR_KEYWORD
-        for parameter in signature.parameters.values()
+        parameter.kind == _PARAMETER.VAR_KEYWORD for parameter in signature.parameters.values()
     )
     positional_only = {
         parameter.name
@@ -61,14 +60,12 @@ def _calls(signature: inspect.Signature) -> Iterator[tuple[tuple[Any, ...], dict
     positional = [
         parameter
         for parameter in params
-        if parameter.kind
-        in (_PARAMETER.POSITIONAL_ONLY, _PARAMETER.POSITIONAL_OR_KEYWORD)
+        if parameter.kind in (_PARAMETER.POSITIONAL_ONLY, _PARAMETER.POSITIONAL_OR_KEYWORD)
     ]
     keyword = [
         parameter.name
         for parameter in params
-        if parameter.kind
-        in (_PARAMETER.POSITIONAL_OR_KEYWORD, _PARAMETER.KEYWORD_ONLY)
+        if parameter.kind in (_PARAMETER.POSITIONAL_OR_KEYWORD, _PARAMETER.KEYWORD_ONLY)
     ]
     extra_positional = (
         2 if any(parameter.kind == _PARAMETER.VAR_POSITIONAL for parameter in params) else 0

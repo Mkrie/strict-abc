@@ -68,9 +68,7 @@ def validate_signature(
         child_annotation = normalize_annotation(child_param.annotation)
 
         if options.check_types_contravariant:
-            if not is_param_compatible_contravariant(
-                parent_annotation, child_annotation
-            ):
+            if not is_param_compatible_contravariant(parent_annotation, child_annotation):
                 add_violation(
                     f"parameter type for '{label}' is not contravariant "
                     f"(parent: {parent_annotation}, child: {child_annotation})"
@@ -155,12 +153,8 @@ def validate_signature(
         inspect.Parameter.KEYWORD_ONLY,
     )
 
-    parent_pos = [
-        parameter for parameter in parent_params if parameter.kind in positional_kinds
-    ]
-    child_pos = [
-        parameter for parameter in child_params if parameter.kind in positional_kinds
-    ]
+    parent_pos = [parameter for parameter in parent_params if parameter.kind in positional_kinds]
+    child_pos = [parameter for parameter in child_params if parameter.kind in positional_kinds]
     parent_kw = {
         parameter.name: parameter
         for parameter in parent_params
@@ -182,14 +176,10 @@ def validate_signature(
         ParameterPair(parent, child, "position", checked_position=True)
         for parent, child in zip(parent_pos, child_pos, strict=False)
     ]
-    positional_pairs_by_name = {
-        pair.parent.name: pair for pair in positional_pairs
-    }
+    positional_pairs_by_name = {pair.parent.name: pair for pair in positional_pairs}
 
     parent_keyword_params = [
-        parameter
-        for parameter in parent_params
-        if parameter.kind in keyword_accessible_kinds
+        parameter for parameter in parent_params if parameter.kind in keyword_accessible_kinds
     ]
     keyword_pairs: list[ParameterPair | None] = []
     for parent in parent_keyword_params:
@@ -202,8 +192,7 @@ def validate_signature(
                     child,
                     "name",
                     checked_position=(
-                        positional_pair is not None
-                        and positional_pair.child.name == child.name
+                        positional_pair is not None and positional_pair.child.name == child.name
                     ),
                 )
             )
@@ -216,8 +205,7 @@ def validate_signature(
 
     def has_keyword_collision(position: int, child_name: str) -> bool:
         if not any(
-            parameter.name == child_name
-            and parameter.kind in keyword_accessible_kinds
+            parameter.name == child_name and parameter.kind in keyword_accessible_kinds
             for parameter in parent_params
         ):
             return False
@@ -266,21 +254,12 @@ def validate_signature(
         child = pair.child
         check_default(parent, child)
 
-        if (
-            parent.kind != child.kind
-            and (parent.kind, child.kind) not in allowed_kind_expansions
-        ):
+        if parent.kind != child.kind and (parent.kind, child.kind) not in allowed_kind_expansions:
             keyword_is_preserved = (
                 parent.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
                 and child.kind == inspect.Parameter.POSITIONAL_ONLY
-                and (
-                    parent.name != child.name
-                    or child.default is not inspect.Parameter.empty
-                )
-                and (
-                    child_var_kw is not None
-                    or parent.name in child_by_keyword_name
-                )
+                and (parent.name != child.name or child.default is not inspect.Parameter.empty)
+                and (child_var_kw is not None or parent.name in child_by_keyword_name)
             )
             if not keyword_is_preserved:
                 add_violation(
@@ -291,15 +270,9 @@ def validate_signature(
 
         if options.check_names and parent.name != child.name:
             reported_name_mismatches.add(parent.name)
-            add_violation(
-                f"parameter name mismatch "
-                f"(expected '{parent.name}', got '{child.name}')"
-            )
+            add_violation(f"parameter name mismatch (expected '{parent.name}', got '{child.name}')")
 
-        if (
-            parent.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-            and parent.name != child.name
-        ):
+        if parent.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD and parent.name != child.name:
             if child.default is inspect.Parameter.empty:
                 add_violation(
                     f"cannot accept parent keyword parameter '{parent.name}' "
@@ -307,8 +280,7 @@ def validate_signature(
                 )
             if parent.name not in child_by_keyword_name and child_var_kw is None:
                 add_violation(
-                    f"cannot accept parent keyword parameter '{parent.name}' "
-                    "without **kwargs"
+                    f"cannot accept parent keyword parameter '{parent.name}' without **kwargs"
                 )
 
         check_annotation(parent, child, parent.name)
@@ -321,8 +293,7 @@ def validate_signature(
             and has_keyword_collision(position, child.name)
         ):
             add_violation(
-                f"parameter '{child.name}' can receive multiple values "
-                "for a valid parent call"
+                f"parameter '{child.name}' can receive multiple values for a valid parent call"
             )
 
     if child_var_pos is not None:
@@ -339,19 +310,15 @@ def validate_signature(
             ):
                 continue
             add_violation(
-                f"new required parameter '{child.name}' "
-                "strengthens precondition and violates LSP"
+                f"new required parameter '{child.name}' strengthens precondition and violates LSP"
             )
 
-    parent_keyword_names = {
-        parameter.name for parameter in parent_keyword_params
-    }
+    parent_keyword_names = {parameter.name for parameter in parent_keyword_params}
 
     for parent, keyword_pair in zip(parent_keyword_params, keyword_pairs, strict=True):
         if keyword_pair is None:
             add_violation(
-                f"cannot accept parent keyword parameter '{parent.name}' "
-                "without **kwargs"
+                f"cannot accept parent keyword parameter '{parent.name}' without **kwargs"
             )
             continue
 
@@ -363,10 +330,7 @@ def validate_signature(
                 and parent.name not in child_param_names
                 and parent.name not in reported_name_mismatches
             ):
-                add_violation(
-                    f"parameter name mismatch "
-                    f"(expected '{parent.name}', got '**kwargs')"
-                )
+                add_violation(f"parameter name mismatch (expected '{parent.name}', got '**kwargs')")
             continue
 
         if (
@@ -384,10 +348,7 @@ def validate_signature(
             check_annotation(parent, child, parent.name)
 
     for keyword_name, child in child_kw.items():
-        if (
-            keyword_name not in parent_keyword_names
-            and child.default is inspect.Parameter.empty
-        ):
+        if keyword_name not in parent_keyword_names and child.default is inspect.Parameter.empty:
             add_violation(
                 f"new required keyword-only parameter '{keyword_name}' "
                 "strengthens precondition and violates LSP"
@@ -396,15 +357,11 @@ def validate_signature(
     if options.check_return_type:
         parent_return = sig_parent.return_annotation
         child_return = sig_child.return_annotation
-        if (
-            parent_return is not inspect.Signature.empty
-            and child_return is inspect.Signature.empty
-        ):
+        if parent_return is not inspect.Signature.empty and child_return is inspect.Signature.empty:
             add_violation("missing return type annotation")
         elif not is_return_compatible(parent_return, child_return):
             add_violation(
-                f"return type not covariant "
-                f"(expected {parent_return}, got {child_return})"
+                f"return type not covariant (expected {parent_return}, got {child_return})"
             )
 
     return violations

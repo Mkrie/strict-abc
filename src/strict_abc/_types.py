@@ -93,15 +93,11 @@ def is_param_compatible_contravariant(parent_ann: object, child_ann: object) -> 
 
     parent_union = union_args(parent)
     if parent_union is not None:
-        return all(
-            is_param_compatible_contravariant(member, child) for member in parent_union
-        )
+        return all(is_param_compatible_contravariant(member, child) for member in parent_union)
 
     child_union = union_args(child)
     if child_union is not None:
-        return any(
-            is_param_compatible_contravariant(parent, member) for member in child_union
-        )
+        return any(is_param_compatible_contravariant(parent, member) for member in child_union)
 
     parent_origin = get_origin(parent)
     child_origin = get_origin(child)

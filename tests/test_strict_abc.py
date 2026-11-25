@@ -70,6 +70,7 @@ def test_lsp_violation_caught_as_type_error() -> None:
         def m(self, a: int = 1) -> None: ...
 
     with pytest.raises(TypeError):
+
         class _Impl(Base):
             def m(self, a: int) -> None: ...
 
@@ -137,6 +138,7 @@ def test_deep_subclass_override_is_validated() -> None:
         def m(self, a: int = 1) -> None: ...
 
     with pytest.raises(TypeError, match="removing default value"):
+
         class _Impl(Middle):
             def m(self, a: int) -> None: ...
 
@@ -168,6 +170,7 @@ def test_mixin_inherited_implementation_is_validated() -> None:
         def m(self, a: int) -> None: ...
 
     with pytest.raises(TypeError, match="removing default value"):
+
         class _Impl(Mixin, Base):
             pass
 
@@ -197,6 +200,7 @@ def test_multiple_abstract_bases_are_validated() -> None:
         def m(self, a: int, b: int) -> None: ...
 
     with pytest.raises(TypeError, match=r"without \*args"):
+
         class _C(A, B):
             def m(self, a: int) -> None: ...
 
@@ -374,6 +378,7 @@ def test_strict_decorator_injects_options() -> None:
     assert Base.__strict_options__ == {"check_names": True}  # type: ignore[attr-defined]
 
     with pytest.raises(TypeError, match="parameter name mismatch"):
+
         class _Impl(Base):
             def m(self, beta: int) -> int:
                 return beta
@@ -428,6 +433,7 @@ def test_error_mode_raises_by_default() -> None:
         def m(self, a: int = 1) -> int: ...
 
     with pytest.raises(LSPViolation):
+
         class _Impl(Base):
             def m(self, a: int) -> int:
                 return a

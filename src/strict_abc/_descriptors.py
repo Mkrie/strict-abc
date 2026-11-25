@@ -49,9 +49,7 @@ def is_lsp_exempt(attr: object) -> bool:
     if fget is not None:
         candidates.append(fget)
 
-    return any(
-        bool(getattr(candidate, "__lsp_exempt__", False)) for candidate in candidates
-    )
+    return any(bool(getattr(candidate, "__lsp_exempt__", False)) for candidate in candidates)
 
 
 def descriptor_kind(attr: object) -> DescriptorKind:
