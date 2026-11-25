@@ -579,10 +579,22 @@ strict-abc/
 ├── src/
 │   └── strict_abc/
 │       ├── __init__.py
+│       ├── _annotations.py
+│       ├── _descriptors.py
+│       ├── _errors.py
 │       ├── _meta.py
+│       ├── _options.py
+│       ├── _signatures.py
+│       ├── _types.py
 │       └── py.typed
 ├── tests/
-│   └── test_strict_abc.py
+│   ├── test_annotations.py
+│   ├── test_descriptors.py
+│   ├── test_options.py
+│   ├── test_signature_differential.py
+│   ├── test_signatures.py
+│   ├── test_strict_abc.py
+│   └── test_types.py
 ├── .github/
 │   └── workflows/
 │       └── ci.yml
@@ -591,6 +603,11 @@ strict-abc/
 ├── README.md
 └── LICENSE
 ```
+
+The metaclass in `_meta.py` orchestrates validation. The pure signature engine,
+annotation handling, descriptor introspection, type compatibility, options, and
+errors are separated into focused internal modules. `StrictABCMeta` retains
+compatibility delegates for its existing private helper methods.
 
 ---
 

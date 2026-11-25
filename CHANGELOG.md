@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Split runtime validation into focused internal modules for signatures, types,
+  annotations, descriptors, options, and errors without changing the public API.
+- Organize tests by validation domain and add deterministic differential
+  signature testing.
+
 ### Fixed
 
 - Handle reordered parameters without rejecting compatible overrides or
