@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- Handle reordered parameters without rejecting compatible overrides or
+  accepting calls that produce duplicate argument values.
+- Apply `check_types` and `check_types_contravariant` when fixed parent
+  parameters are absorbed by a child `*args` or `**kwargs`.
+- Check defaults and annotations against the actual matched parameter rather
+  than assuming that equal names were already compared positionally.
+
 ## 0.4.0
 
 ### Changed

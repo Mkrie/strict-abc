@@ -352,6 +352,95 @@ def test_positional_or_keyword_rename_with_kwargs_required_raises() -> None:
             def m(self, b: int, **kwargs: int) -> int:
                 return b
 
+
+def test_reordered_optional_parameters_allowed() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, a: int = 0) -> int: ...
+
+    class Impl(Base):
+        def m(self, b: int = 1, a: int = 0) -> int:
+            return a + b
+
+    assert Impl().m() == 1
+    assert Impl().m(5) == 5
+    assert Impl().m(a=5) == 6
+
+
+def test_parent_keyword_absorbed_by_other_positional_only_and_kwargs_allowed() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, a: int) -> int: ...
+
+    class Impl(Base):
+        def m(self, b: int = 1, /, **kwargs: int) -> int:
+            return b + sum(kwargs.values())
+
+    assert Impl().m(5) == 5
+    assert Impl().m(a=5) == 6
+
+
+def test_same_positional_only_required_parameter_with_kwargs_raises() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, a: int) -> None: ...
+
+    with pytest.raises(TypeError, match="kind transition"):
+        class _Impl(Base):
+            def m(self, a: int, /, **kwargs: int) -> None: ...
+
+
+def test_reordered_parent_positional_only_does_not_create_keyword_collision() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, a: int, b: int, /) -> None: ...
+
+    class Impl(Base):
+        def m(self, b: int, a: int) -> None: ...
+
+    Impl().m(1, 2)
+
+
+def test_parent_keyword_colliding_with_reordered_child_parameter_raises() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, key: str, /, *, value: int) -> None: ...
+
+    with pytest.raises(TypeError, match="multiple values"):
+        class _Impl(Base):
+            def m(self, value: int) -> None: ...
+
+
+def test_swapped_positional_parameters_collision_raises() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, a: int, b: int = 1) -> None: ...
+
+    with pytest.raises(TypeError, match="multiple values"):
+        class _Impl(Base):
+            def m(self, b: int = 1, a: int = 0) -> None: ...
+
+
+def test_parent_varargs_keyword_only_collision_with_child_positional_raises() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, *args: int, b: int = 1) -> None: ...
+
+    with pytest.raises(TypeError, match="multiple values"):
+        class _Impl(Base):
+            def m(self, b: int = 1, *args: int) -> None: ...
+
+
+def test_reordered_required_child_parameter_without_default_raises() -> None:
+    class Base(StrictABC):
+        @abstractmethod
+        def m(self, a: int) -> None: ...
+
+    with pytest.raises(TypeError, match="has no default"):
+        class _Impl(Base):
+            def m(self, b: int, a: int = 0) -> None: ...
+
+
 def test_keyword_only_rename_raises_by_default() -> None:
     class Base(StrictABC):
         @abstractmethod
@@ -617,6 +706,56 @@ def test_check_types_variadic_missing_annotation_raises() -> None:
             def m(self, *args: int, **kwargs) -> None: ...
 
 
+def test_check_types_keyword_absorbed_by_kwargs_mismatch_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types": True}
+
+        @abstractmethod
+        def m(self, a: int) -> None: ...
+
+    with pytest.raises(TypeError, match="type annotation mismatch for 'a'"):
+        class _Impl(Base):
+            def m(self, *args: int, **kwargs: str) -> None: ...
+
+
+def test_check_types_positional_only_absorbed_by_varargs_mismatch_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types": True}
+
+        @abstractmethod
+        def m(self, a: int, /) -> None: ...
+
+    with pytest.raises(TypeError, match="type annotation mismatch for 'a'"):
+        class _Impl(Base):
+            def m(self, *args: str) -> None: ...
+
+
+def test_check_types_absorbed_parameters_exact_allowed() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types": True}
+
+        @abstractmethod
+        def m(self, a: int) -> None: ...
+
+    class Impl(Base):
+        def m(self, *args: int, **kwargs: int) -> None: ...
+
+    Impl().m(1)
+    Impl().m(a=1)
+
+
+def test_check_types_reordered_later_parameter_mismatch_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types": True}
+
+        @abstractmethod
+        def m(self, a: int = 0) -> None: ...
+
+    with pytest.raises(TypeError, match="type annotation mismatch for 'a'"):
+        class _Impl(Base):
+            def m(self, b: int = 1, a: str = 0) -> None: ...
+
+
 # ===================================================================
 # check_types_contravariant
 # ===================================================================
@@ -698,6 +837,31 @@ def test_contravariant_variadic_widening_allowed() -> None:
         def m(self, *args: object, **kwargs: object) -> None: ...
 
     Impl().m(1, a=2)
+
+
+def test_contravariant_absorbed_fixed_parameter_widening_allowed() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types_contravariant": True}
+
+        @abstractmethod
+        def m(self, a: int, /) -> None: ...
+
+    class Impl(Base):
+        def m(self, *args: object) -> None: ...
+
+    Impl().m(1)
+
+
+def test_contravariant_absorbed_fixed_parameter_narrowing_raises() -> None:
+    class Base(StrictABC):
+        __strict_options__ = {"check_types_contravariant": True}
+
+        @abstractmethod
+        def m(self, a: object) -> None: ...
+
+    with pytest.raises(TypeError, match="parameter type for 'a' is not contravariant"):
+        class _Impl(Base):
+            def m(self, *args: object, **kwargs: int) -> None: ...
 
 
 def test_contravariant_missing_child_annotation_raises() -> None:

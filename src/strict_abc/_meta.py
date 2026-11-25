@@ -967,22 +967,16 @@ class StrictABCMeta(ABCMeta):
         c_has_var_pos = c_var_pos is not None
         c_has_var_kw = c_var_kw is not None
 
-        def check_variadic_annotation(
+        def check_annotation(
             parent_param: inspect.Parameter,
             child_param: inspect.Parameter,
+            label: str,
         ) -> None:
-            """Validate annotations on matched ``*args`` / ``**kwargs``."""
             if not (check_types or check_types_contravariant):
                 return
 
             p_has_ann = parent_param.annotation is not inspect.Parameter.empty
             c_has_ann = child_param.annotation is not inspect.Parameter.empty
-
-            label = (
-                f"*{parent_param.name}"
-                if parent_param.kind == inspect.Parameter.VAR_POSITIONAL
-                else f"**{parent_param.name}"
-            )
 
             if p_has_ann and not c_has_ann:
                 violations.append(
@@ -1043,9 +1037,9 @@ class StrictABCMeta(ABCMeta):
             )
 
         if p_var_pos is not None and c_var_pos is not None:
-            check_variadic_annotation(p_var_pos, c_var_pos)
+            check_annotation(p_var_pos, c_var_pos, f"*{p_var_pos.name}")
         if p_var_kw is not None and c_var_kw is not None:
-            check_variadic_annotation(p_var_kw, c_var_kw)
+            check_annotation(p_var_kw, c_var_kw, f"**{p_var_kw.name}")
 
         # --- Categorize parameters --------------------------------------
 
@@ -1072,6 +1066,40 @@ class StrictABCMeta(ABCMeta):
             c.name: c for c in c_params if c.kind in keyword_accessible_kinds
         }
         c_param_names = {c.name for c in c_params}
+        compared_positional_pairs: set[tuple[int, int]] = set()
+        stripped_parent_signature = inspect.Signature(p_params)
+
+        def has_keyword_collision(position: int, child_name: str) -> bool:
+            if not any(
+                p.name == child_name and p.kind in keyword_accessible_kinds
+                for p in p_params
+            ):
+                return False
+            positional_limit = len(p_pos)
+            if p_has_var_pos:
+                positional_limit = max(positional_limit, position + 1)
+            for positional_count in range(position + 1, positional_limit + 1):
+                args = (None,) * positional_count
+                kwargs = {child_name: None}
+                positional_names = {
+                    p.name
+                    for p in p_pos[:positional_count]
+                    if p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+                }
+                for p in p_params:
+                    if (
+                        p.kind in keyword_accessible_kinds
+                        and p.default is inspect.Parameter.empty
+                        and p.name not in positional_names
+                        and p.name not in kwargs
+                    ):
+                        kwargs[p.name] = None
+                try:
+                    stripped_parent_signature.bind(*args, **kwargs)
+                except TypeError:
+                    continue
+                return True
+            return False
 
         reported_name_mismatches: set[str] = set()
 
@@ -1094,6 +1122,8 @@ class StrictABCMeta(ABCMeta):
         }
 
         for p, c in zip(p_pos, c_pos, strict=False):
+            compared_positional_pairs.add((id(p), id(c)))
+
             # Default removal.
             if check_defaults:
                 p_has_default = p.default is not inspect.Parameter.empty
@@ -1111,15 +1141,22 @@ class StrictABCMeta(ABCMeta):
 
             # Kind transition.
             if p.kind != c.kind and (p.kind, c.kind) not in allowed_kind_expansions:
-                violations.append(
-                    LSPViolation(
-                        class_name,
-                        meth_name,
-                        f"parameter '{p.name}' kind transition "
-                        f"{p.kind.name} -> {c.kind.name} restricts call syntax "
-                        f"and violates LSP",
-                    )
+                keyword_is_preserved = (
+                    p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+                    and c.kind == inspect.Parameter.POSITIONAL_ONLY
+                    and (p.name != c.name or c.default is not inspect.Parameter.empty)
+                    and (c_has_var_kw or p.name in c_by_name_keyword)
                 )
+                if not keyword_is_preserved:
+                    violations.append(
+                        LSPViolation(
+                            class_name,
+                            meth_name,
+                            f"parameter '{p.name}' kind transition "
+                            f"{p.kind.name} -> {c.kind.name} restricts call syntax "
+                            f"and violates LSP",
+                        )
+                    )
 
             # Name check (explicit option).
             if check_names and p.name != c.name:
@@ -1138,16 +1175,7 @@ class StrictABCMeta(ABCMeta):
                 p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
                 and p.name != c.name
             ):
-                if not c_has_var_kw:
-                    violations.append(
-                        LSPViolation(
-                            class_name,
-                            meth_name,
-                            f"cannot accept parent keyword parameter "
-                            f"'{p.name}' without **kwargs",
-                        ),
-                    )
-                elif c.default is inspect.Parameter.empty:
+                if c.default is inspect.Parameter.empty:
                     violations.append(
                         LSPViolation(
                             class_name,
@@ -1157,46 +1185,38 @@ class StrictABCMeta(ABCMeta):
                             f"parameter has no default",
                         ),
                     )
-
-            # Type annotations.
-            if check_types or check_types_contravariant:
-                p_has_ann = p.annotation is not inspect.Parameter.empty
-                c_has_ann = c.annotation is not inspect.Parameter.empty
-
-                if p_has_ann and not c_has_ann:
+                if p.name not in c_by_name_keyword and not c_has_var_kw:
                     violations.append(
                         LSPViolation(
                             class_name,
                             meth_name,
-                            f"missing type annotation for '{p.name}'",
-                        )
+                            f"cannot accept parent keyword parameter "
+                            f"'{p.name}' without **kwargs",
+                        ),
                     )
-                elif p_has_ann and c_has_ann:
-                    p_ann = StrictABCMeta._normalize_annotation(p.annotation)
-                    c_ann = StrictABCMeta._normalize_annotation(c.annotation)
 
-                    if check_types_contravariant:
-                        if not StrictABCMeta._is_param_compatible_contravariant(
-                            p_ann, c_ann
-                        ):
-                            violations.append(
-                                LSPViolation(
-                                    class_name,
-                                    meth_name,
-                                    f"parameter type for '{p.name}' is not "
-                                    f"contravariant (parent: {p_ann}, "
-                                    f"child: {c_ann})",
-                                )
-                            )
-                    elif p_ann != c_ann:
-                        violations.append(
-                            LSPViolation(
-                                class_name,
-                                meth_name,
-                                f"type annotation mismatch for '{p.name}' "
-                                f"(expected {p_ann}, got {c_ann})",
-                            )
-                        )
+            # Type annotations.
+            check_annotation(p, c, p.name)
+
+        for position, c in enumerate(c_pos):
+            parent_positional = p_pos[position] if position < len(p_pos) else None
+            if (
+                (parent_positional is None or parent_positional.name != c.name)
+                and c.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+                and has_keyword_collision(position, c.name)
+            ):
+                violations.append(
+                    LSPViolation(
+                        class_name,
+                        meth_name,
+                        f"parameter '{c.name}' can receive multiple values "
+                        f"for a valid parent call",
+                    )
+                )
+
+        if c_var_pos is not None:
+            for p in p_pos[len(c_pos):]:
+                check_annotation(p, c_var_pos, p.name)
 
         # Extra child positional parameters must be optional.
         for c in c_pos[len(p_pos):]:
@@ -1245,15 +1265,9 @@ class StrictABCMeta(ABCMeta):
                         )
                     )
 
-                # Guard: если оба параметра POSITIONAL_OR_KEYWORD,
-                # defaults/types уже проверены в позиционном цикле,
-                # чтобы избежать дублей в списке violations.
-                _both_pos_or_kw = (
-                    p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-                    and c_same.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-                )
+                already_checked = (id(p), id(c_same)) in compared_positional_pairs
 
-                if not _both_pos_or_kw:
+                if not already_checked:
                     if check_defaults:
                         p_has_default = p.default is not inspect.Parameter.empty
                         c_has_default = c_same.default is not inspect.Parameter.empty
@@ -1268,44 +1282,7 @@ class StrictABCMeta(ABCMeta):
                                 )
                             )
 
-                    if check_types or check_types_contravariant:
-                        p_has_ann = p.annotation is not inspect.Parameter.empty
-                        c_has_ann = c_same.annotation is not inspect.Parameter.empty
-
-                        if p_has_ann and not c_has_ann:
-                            violations.append(
-                                LSPViolation(
-                                    class_name,
-                                    meth_name,
-                                    f"missing type annotation for '{p.name}'",
-                                )
-                            )
-                        elif p_has_ann and c_has_ann:
-                            p_ann = StrictABCMeta._normalize_annotation(p.annotation)
-                            c_ann = StrictABCMeta._normalize_annotation(c_same.annotation)
-
-                            if check_types_contravariant:
-                                if not StrictABCMeta._is_param_compatible_contravariant(
-                                    p_ann, c_ann
-                                ):
-                                    violations.append(
-                                        LSPViolation(
-                                            class_name,
-                                            meth_name,
-                                            f"parameter type for '{p.name}' is not "
-                                            f"contravariant (parent: {p_ann}, "
-                                            f"child: {c_ann})",
-                                        )
-                                    )
-                            elif p_ann != c_ann:
-                                violations.append(
-                                    LSPViolation(
-                                        class_name,
-                                        meth_name,
-                                        f"type annotation mismatch for '{p.name}' "
-                                        f"(expected {p_ann}, got {c_ann})",
-                                    )
-                                )
+                    check_annotation(p, c_same, p.name)
             else:
                 if not c_has_var_kw:
                     violations.append(
@@ -1316,19 +1293,21 @@ class StrictABCMeta(ABCMeta):
                             f"'{p.name}' without **kwargs",
                         )
                     )
-                elif (
-                    check_names
-                    and p.name not in c_param_names
-                    and p.name not in reported_name_mismatches
-                ):
-                    violations.append(
-                        LSPViolation(
-                            class_name,
-                            meth_name,
-                            f"parameter name mismatch "
-                            f"(expected '{p.name}', got '**kwargs')",
+                elif c_var_kw is not None:
+                    check_annotation(p, c_var_kw, p.name)
+                    if (
+                        check_names
+                        and p.name not in c_param_names
+                        and p.name not in reported_name_mismatches
+                    ):
+                        violations.append(
+                            LSPViolation(
+                                class_name,
+                                meth_name,
+                                f"parameter name mismatch "
+                                f"(expected '{p.name}', got '**kwargs')",
+                            )
                         )
-                    )
 
         # New keyword-only parameters must be optional.
         for kw_name, c in c_kw.items():
