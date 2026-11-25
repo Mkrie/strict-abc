@@ -19,15 +19,50 @@ Example:
 
 from __future__ import annotations
 
-import ast
-import builtins
 import inspect
-import types
-import typing
 import warnings
 from abc import ABC, ABCMeta
-from collections.abc import Callable, Mapping
-from typing import Any, ClassVar, Literal, TypedDict, cast
+from collections.abc import Callable
+from typing import Any, ClassVar, cast
+
+from strict_abc._annotations import (
+    get_args as _get_args,
+)
+from strict_abc._annotations import (
+    get_origin as _get_origin,
+)
+from strict_abc._annotations import (
+    normalize_annotation as _normalize_annotation,
+)
+from strict_abc._annotations import (
+    union_args as _union_args,
+)
+from strict_abc._descriptors import (
+    DescriptorKind,
+)
+from strict_abc._descriptors import (
+    async_kind as _async_kind,
+)
+from strict_abc._descriptors import (
+    descriptor_kind as _descriptor_kind,
+)
+from strict_abc._descriptors import (
+    find_abstract_attrs as _find_abstract_attrs,
+)
+from strict_abc._descriptors import (
+    find_concrete_attr as _find_concrete_attr,
+)
+from strict_abc._descriptors import (
+    is_lsp_exempt as _is_lsp_exempt,
+)
+from strict_abc._descriptors import (
+    signature as _signature,
+)
+from strict_abc._descriptors import (
+    unwrap_descriptor as _unwrap_descriptor,
+)
+from strict_abc._errors import LSPViolation
+from strict_abc._options import StrictOptions, get_options
 
 __all__ = [
     "DescriptorKind",
@@ -41,84 +76,6 @@ __all__ = [
 ]
 
 __version__ = "0.4.0"
-
-# Only builtin types may be resolved from string annotations. Never expose
-# functions such as ``open``, ``eval``, or ``getattr`` to annotation evaluation.
-_SAFE_ANNOTATION_BUILTINS: frozenset[str] = frozenset(
-    name
-    for name in dir(builtins)
-    if isinstance(getattr(builtins, name), type)
-)
-
-# ---------------------------------------------------------------------------
-# Type aliases
-# ---------------------------------------------------------------------------
-
-DescriptorKind = Literal[
-    "staticmethod",
-    "classmethod",
-    "property",
-    "instancemethod",
-]
-
-
-# ---------------------------------------------------------------------------
-# Options
-# ---------------------------------------------------------------------------
-
-
-class StrictOptions(TypedDict, total=False):
-    """Options accepted by ``StrictABCMeta``.
-
-    Attributes:
-        check_names: Require equal parameter names between parent and child.
-        check_defaults: Forbid removing default values from parameters.
-        check_types: Require exact parameter type annotation matching.
-        check_types_contravariant: Require contravariant parameter types
-            (child may widen the accepted type). Takes precedence over
-            ``check_types`` when both are set.
-        check_return_type: Require covariant return type annotations.
-        mode: Whether violations raise an error or emit a warning.
-    """
-
-    check_names: bool
-    check_defaults: bool
-    check_types: bool
-    check_types_contravariant: bool
-    check_return_type: bool
-    mode: Literal["error", "warn"]
-
-
-# ---------------------------------------------------------------------------
-# Exception
-# ---------------------------------------------------------------------------
-
-
-class LSPViolation(TypeError):
-    """Raised when a concrete method violates the LSP calling contract.
-
-    This is a subclass of ``TypeError`` so existing ``except TypeError``
-    handlers continue to work.
-
-    Attributes:
-        cls_name: Name of the offending class.
-        meth_name: Name of the offending method.
-        reason: Human-readable description of the violation.
-    """
-
-    def __init__(self, cls_name: str, meth_name: str, reason: str) -> None:
-        """Initialize the violation.
-
-        Args:
-            cls_name: Name of the class that violates the contract.
-            meth_name: Name of the method that violates the contract.
-            reason: Description of what went wrong.
-        """
-        self.cls_name = cls_name
-        self.meth_name = meth_name
-        self.reason = reason
-        super().__init__(f"{cls_name}.{meth_name}: {reason}")
-
 
 # ---------------------------------------------------------------------------
 # Decorators
@@ -357,23 +314,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             A fully-populated ``StrictOptions`` dict with defaults applied.
         """
-        resolved: dict[str, object] = {}
-
-        for base in reversed(cls.__mro__):
-            raw: object = base.__dict__.get("__strict_options__")
-            if isinstance(raw, Mapping):
-                resolved.update(cast("Mapping[str, object]", raw))
-
-        return {
-            "check_names": bool(resolved.get("check_names", False)),
-            "check_defaults": bool(resolved.get("check_defaults", True)),
-            "check_types": bool(resolved.get("check_types", False)),
-            "check_types_contravariant": bool(
-                resolved.get("check_types_contravariant", False)
-            ),
-            "check_return_type": bool(resolved.get("check_return_type", False)),
-            "mode": resolved.get("mode", "error"),  # type: ignore[typeddict-item]
-        }
+        return get_options(cls)
 
     # ------------------------------------------------------------------
     # Attribute discovery
@@ -390,11 +331,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             The concrete attribute, or ``None`` if not found.
         """
-        for base in cls.__mro__:
-            attr: object = base.__dict__.get(name)
-            if attr is not None and not getattr(attr, "__isabstractmethod__", False):
-                return attr
-        return None
+        return _find_concrete_attr(cls, name)
 
     @staticmethod
     def _find_abstract_attrs(cls: type[Any], name: str) -> list[object]:
@@ -409,18 +346,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             A list of unique abstract attribute objects.
         """
-        attrs: list[object] = []
-        seen: set[int] = set()
-
-        for base in cls.__mro__[1:]:
-            attr: object = base.__dict__.get(name)
-            if attr is not None and getattr(attr, "__isabstractmethod__", False):
-                attr_id = id(attr)
-                if attr_id not in seen:
-                    attrs.append(attr)
-                    seen.add(attr_id)
-
-        return attrs
+        return _find_abstract_attrs(cls, name)
 
     @staticmethod
     def _is_lsp_exempt(attr: object) -> bool:
@@ -436,20 +362,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             ``True`` if any underlying callable is exempt.
         """
-        candidates: list[object] = [attr]
-
-        func = getattr(attr, "__func__", None)
-        if func is not None:
-            candidates.append(func)
-
-        fget = getattr(attr, "fget", None)
-        if fget is not None:
-            candidates.append(fget)
-
-        return any(
-            bool(getattr(candidate, "__lsp_exempt__", False))
-            for candidate in candidates
-        )
+        return _is_lsp_exempt(attr)
 
     # ------------------------------------------------------------------
     # Descriptor introspection
@@ -469,15 +382,7 @@ class StrictABCMeta(ABCMeta):
         Raises:
             TypeError: If the attribute is not a recognized descriptor type.
         """
-        if isinstance(attr, property):
-            return "property"
-        if isinstance(attr, staticmethod):
-            return "staticmethod"
-        if isinstance(attr, classmethod):
-            return "classmethod"
-        if callable(attr):
-            return "instancemethod"
-        raise TypeError(f"Unsupported descriptor type: {type(attr)!r}")
+        return _descriptor_kind(attr)
 
     @staticmethod
     def _unwrap_descriptor(attr: object) -> tuple[Callable[..., Any], DescriptorKind]:
@@ -492,23 +397,7 @@ class StrictABCMeta(ABCMeta):
         Raises:
             TypeError: If the attribute cannot be unwrapped.
         """
-        kind = StrictABCMeta._descriptor_kind(attr)
-
-        if isinstance(attr, property):
-            if attr.fget is None:
-                raise TypeError("Property without getter cannot be inspected")
-            return attr.fget, kind
-
-        if isinstance(attr, staticmethod):
-            return attr.__func__, kind
-
-        if isinstance(attr, classmethod):
-            return attr.__func__, kind
-
-        if callable(attr):
-            return attr, kind
-
-        raise TypeError(f"Unsupported descriptor type: {type(attr)!r}")
+        return _unwrap_descriptor(attr, StrictABCMeta._descriptor_kind)
 
     # ------------------------------------------------------------------
     # Signature helpers
@@ -528,11 +417,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             A human-readable kind used in violation messages.
         """
-        if inspect.iscoroutinefunction(func):
-            return "async"
-        if inspect.isasyncgenfunction(func):
-            return "async generator"
-        return "sync"
+        return _async_kind(func)
 
     @staticmethod
     def _signature(func: Callable[..., Any]) -> inspect.Signature:
@@ -546,11 +431,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             The ``inspect.Signature`` of the callable.
         """
-        func = inspect.unwrap(func)
-        try:
-            return inspect.signature(func, eval_str=True)
-        except Exception:
-            return inspect.signature(func)
+        return _signature(func)
 
     @staticmethod
     def _normalize_annotation(annotation: object) -> object:
@@ -568,92 +449,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             The normalized annotation.
         """
-        if annotation is inspect.Parameter.empty:
-            return annotation
-        if annotation is None:
-            return type(None)
-        if isinstance(annotation, str):
-            # Safely parse and evaluate string annotations
-            try:
-                # Parse the annotation string
-                tree = ast.parse(annotation, mode='eval')
-
-                # Security check: reject dangerous patterns.
-                #
-                # Underscore attributes are blocked wholesale (``__dict__``,
-                # ``__globals__``, ``__class__``, ...), because they can be
-                # used to reach the real builtins through otherwise safe
-                # objects such as the ``typing`` module. Dunder names are
-                # blocked for the same reason.
-                dangerous_calls = frozenset(
-                    {"exec", "eval", "compile", "open", "getattr", "setattr",
-                     "globals", "locals", "vars", "input", "breakpoint"}
-                )
-                dangerous_attributes = frozenset(
-                    {"system", "popen", "exec", "execfile", "func_globals",
-                     "f_globals", "gi_frame", "cr_frame"}
-                )
-
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Name) and node.id.startswith("__"):
-                        return annotation
-
-                    if isinstance(node, ast.Attribute):
-                        if node.attr.startswith("_"):
-                            return annotation
-                        if node.attr in dangerous_attributes:
-                            return annotation
-
-                    if isinstance(node, ast.Call):
-                        func = node.func
-                        if isinstance(func, ast.Name) and func.id in dangerous_calls:
-                            return annotation
-                        if (
-                            isinstance(func, ast.Attribute)
-                            and func.attr in dangerous_calls
-                        ):
-                            return annotation
-
-                # Extract all names used in the annotation
-                names: set[str] = set()
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Name):
-                        names.add(node.id)
-                    elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-                        # Handle things like typing.Optional
-                        names.add(node.value.id)
-
-                # Build a restricted namespace. ``eval`` would otherwise
-                # inject the full ``builtins`` module, exposing functions such
-                # as ``open`` and ``getattr`` to annotation strings.
-                safe_globals: dict[str, Any] = {
-                    "__builtins__": {},
-                    "typing": typing,
-                }
-
-                # Only expose builtin types, never builtin functions.
-                for name in names:
-                    if name in _SAFE_ANNOTATION_BUILTINS:
-                        safe_globals[name] = getattr(builtins, name)
-
-                # Add typing symbols directly if they're used
-                typing_symbols = ['Optional', 'Union', 'List', 'Dict', 'Set', 'Tuple',
-                                'Callable', 'Any', 'Literal', 'TypeVar', 'Generic',
-                                'Protocol', 'Final', 'ClassVar']
-                for symbol in typing_symbols:
-                    if symbol in names:
-                        safe_globals[symbol] = getattr(typing, symbol)
-
-                # Evaluate with safe namespace
-                result = eval(compile(tree, '<annotation>', 'eval'), safe_globals)
-                if result is None:
-                    return type(None)
-                return result
-
-            except Exception:
-                # If parsing or evaluation fails, return the original string
-                return annotation
-        return annotation
+        return _normalize_annotation(annotation)
     
     @staticmethod
     def _get_origin(annotation: object) -> object | None:
@@ -668,10 +464,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             The annotation origin or ``None`` if absent.
         """
-        origin = typing.get_origin(annotation)
-        if origin is not None:
-            return cast("object", origin)
-        return cast("object | None", getattr(annotation, "__origin__", None))
+        return _get_origin(annotation)
 
     @staticmethod
     def _get_args(annotation: object) -> object:
@@ -686,10 +479,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             Generic arguments, or an empty tuple if absent.
         """
-        args = typing.get_args(annotation)
-        if args:
-            return cast("object", args)
-        return cast("object", getattr(annotation, "__args__", ()))
+        return _get_args(annotation)
 
     @staticmethod
     def _union_args(annotation: object) -> tuple[Any, ...] | None:
@@ -701,10 +491,7 @@ class StrictABCMeta(ABCMeta):
         Returns:
             A tuple of union members, or ``None`` if not a union.
         """
-        origin = StrictABCMeta._get_origin(annotation)
-        if origin is types.UnionType or origin is typing.Union:
-            return cast("tuple[Any, ...]", StrictABCMeta._get_args(annotation))
-        return None
+        return _union_args(annotation)
 
     # ------------------------------------------------------------------
     # Type compatibility
