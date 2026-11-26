@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.0.0
+
+### Changed
+
+- Mark the public API as stable.
+- Split runtime validation into focused internal modules for signatures, types,
+  annotations, descriptors, options, and errors without changing the public API.
+- Organize tests by validation domain and add deterministic differential
+  signature testing.
+
+### Fixed
+
+- Handle reordered parameters without rejecting compatible overrides or
+  accepting calls that produce duplicate argument values.
+- Apply `check_types` and `check_types_contravariant` when fixed parent
+  parameters are absorbed by a child `*args` or `**kwargs`.
+- Check defaults and annotations against the actual matched parameter rather
+  than assuming that equal names were already compared positionally.
+
+## 0.4.0
+
+### Changed
+
+- Validation is stricter for cases that previously passed silently:
+  - overrides in deep subclasses that re-implement a method already
+    satisfied by an intermediate base class;
+  - `check_types` / `check_types_contravariant` now apply to `*args` and
+    `**kwargs`;
+  - `check_names` now applies when a parent keyword parameter is absorbed
+    by a child `**kwargs`;
+  - async/sync mismatch detection now covers async generator methods
+    (`async def` containing `yield`).
+- `@lsp_exempt` is now honored under `@staticmethod`, `@classmethod`, and
+  `@property`.
+
+### Fixed
+
+- Fix false negatives and false positives in return/parameter compatibility
+  for bare versus parameterized generic types and unions.
+- Restrict string-annotation evaluation so builtin functions (for example
+  `open`) and dunder attribute access cannot be reached from annotations.
+
 ## 0.3.0
 
 ### Added
