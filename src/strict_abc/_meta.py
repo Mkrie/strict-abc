@@ -27,7 +27,7 @@ __all__ = [
     "strict",
 ]
 
-__version__ = "0.4.0"
+__version__ = "1.0.0"
 
 
 def lsp_exempt(func: Callable[..., Any]) -> Callable[..., Any]:

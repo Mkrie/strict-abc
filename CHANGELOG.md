@@ -2,10 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 1.0.0
 
 ### Changed
 
+- Mark the public API as stable.
 - Split runtime validation into focused internal modules for signatures, types,
   annotations, descriptors, options, and errors without changing the public API.
 - Organize tests by validation domain and add deterministic differential

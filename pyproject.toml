@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "strict-abc-lsp"
-version = "0.4.0"
+version = "1.0.0"
 description = "ABCMeta that enforces LSP-friendly signatures for abstract methods."
 authors = ["Danil Shamsutdinov <a.danil.dark@gmail.com>"]
 license = "MIT"
@@ -9,7 +9,7 @@ homepage = "https://github.com/Mkrie/strict-abc"
 repository = "https://github.com/Mkrie/strict-abc"
 keywords = ["abc", "abstract", "lsp", "signature", "typing"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
